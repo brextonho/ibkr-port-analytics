@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
 
 class ConfigError(Exception):
@@ -30,7 +30,7 @@ class RetrySettings(_Strict):
 
 class FlexSettings(_Strict):
     query_id: str
-    token: str
+    token: SecretStr  # prints as ********** in reprs, logs and errors
 
 
 class Settings(_Strict):

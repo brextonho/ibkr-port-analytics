@@ -51,8 +51,16 @@ class FlexRetryExhaustedError(FlexAPIError):
 
 
 def _default_http_get(url: str, params: dict[str, Any], headers: dict[str, str]) -> bytes:
-    resp = requests.get(url, params=params, headers=headers, timeout=60)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=60)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        # requests puts the full URL in its messages, and the token rides in
+        # the query string (?t=…); report the failure without it. `from None`
+        # also keeps the original exception out of logged tracebacks.
+        status = getattr(exc.response, "status_code", None)
+        detail = f" (HTTP {status})" if status else ""
+        raise FlexAPIError(None, f"{type(exc).__name__} calling {url.rsplit('/', 1)[-1]}{detail}") from None
     return resp.content
 
 
@@ -131,7 +139,7 @@ def fetch_statement(
         payload = http_get(
             f"{BASE_URL}/SendRequest",
             {
-                "t": flex.token,
+                "t": flex.token.get_secret_value(),
                 "q": flex.query_id,
                 "v": VERSION,
                 "fd": from_date.strftime("%Y%m%d"),
@@ -152,7 +160,7 @@ def fetch_statement(
     def get_statement() -> bytes:
         payload = http_get(
             f"{BASE_URL}/GetStatement",
-            {"t": flex.token, "q": reference_code, "v": VERSION},
+            {"t": flex.token.get_secret_value(), "q": reference_code, "v": VERSION},
             headers,
         )
         _raise_if_error_response(payload)

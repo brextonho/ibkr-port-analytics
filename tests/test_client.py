@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+import requests
 
 from portfolio.config import FlexSettings, RetrySettings
 from portfolio.flex.client import (
@@ -55,6 +56,7 @@ def test_happy_path_passes_explicit_window_and_reference_code():
     assert retries == []
     send_params = http.calls[0][1]
     assert send_params["fd"] == "20260703" and send_params["td"] == "20260717"
+    assert send_params["t"] == "tok"  # the real token string, not the masked SecretStr
     assert http.calls[1][1]["q"] == "REF42"
 
 
@@ -81,3 +83,45 @@ def test_retry_budget_exhausts():
     http = FakeHttp([SEND_OK], [_error(1019)] * 3)
     with pytest.raises(FlexRetryExhaustedError):
         fetch_statement(FLEX, **WINDOW, retry=RETRY, http_get=http, sleep=lambda s: None)
+
+
+def _failing_get(exc):
+    def get(*args, **kwargs):
+        raise exc
+
+    return get
+
+
+@pytest.mark.parametrize(
+    "make_error",
+    [
+        # a connection failure: requests names the full URL, token and all
+        lambda: requests.ConnectionError(
+            "HTTPSConnectionPool: Max retries exceeded with url: /SendRequest?t=tok-SECRET&q=123"
+        ),
+        # an HTTP error status: raise_for_status() also puts the URL in the message
+        lambda: _http_error(500),
+    ],
+)
+def test_http_failures_never_carry_the_token(monkeypatch, make_error):
+    from portfolio.flex.client import FlexAPIError, _default_http_get
+
+    monkeypatch.setattr(requests, "get", _failing_get(make_error()))
+    with pytest.raises(FlexAPIError) as info:
+        _default_http_get("https://flex.example/SendRequest", {"t": "tok-SECRET", "q": "123"}, {})
+    assert "SECRET" not in str(info.value)
+    assert info.value.__cause__ is None and info.value.__suppress_context__  # not in tracebacks either
+    assert "SendRequest" in str(info.value)
+
+
+def _http_error(status: int) -> requests.HTTPError:
+    resp = requests.Response()
+    resp.status_code = status
+    resp.reason = "Server Error"
+    resp.url = "https://flex.example/SendRequest?t=tok-SECRET&q=123"
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        assert "tok-SECRET" in str(exc)  # what requests would have leaked
+        return exc
+    raise AssertionError("expected an HTTPError")

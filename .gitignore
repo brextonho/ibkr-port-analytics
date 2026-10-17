@@ -39,3 +39,4 @@ ingest.log
 *.db-wal
 *.db-shm
 .claude/
+.claudeignore

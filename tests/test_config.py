@@ -51,12 +51,13 @@ def test_flex_secrets_come_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("FLEX_TOKEN", "secret")
     monkeypatch.setenv("FLEX_QUERY_ID", "12345")
     s = load_settings(tmp_path / "absent.yaml")
-    assert s.flex is not None and s.flex.token == "secret" and s.flex.query_id == "12345"
+    assert s.flex is not None and s.flex.token.get_secret_value() == "secret" and s.flex.query_id == "12345"
+    assert "secret" not in repr(s) and "secret" not in str(s)  # never printed by accident
 
 
 def test_dotenv_file_is_loaded(tmp_path):
     (tmp_path / ".env").write_text("FLEX_TOKEN=fromfile\nFLEX_QUERY_ID=1\n")
-    assert load_settings(tmp_path / "absent.yaml").flex.token == "fromfile"
+    assert load_settings(tmp_path / "absent.yaml").flex.token.get_secret_value() == "fromfile"
 
 
 def test_database_override_and_bare_paths(tmp_path):

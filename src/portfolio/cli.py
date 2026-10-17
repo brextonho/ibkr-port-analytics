@@ -3,13 +3,22 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
 from portfolio.config import load_settings
 
+# The project folder. Every command runs from here, so portfolio.db, .env,
+# config/ and data/xml/ are the same files whichever folder you start it in.
+ROOT = Path(__file__).resolve().parents[2]
 DEMO_XML = Path("tests/fixtures/test_data.xml")
 DEMO_DB = "demo.db"
+
+
+def _from_here(path: str) -> str:
+    """A path you typed, made absolute against the folder you typed it in."""
+    return str(Path(path).expanduser().resolve())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +37,15 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
+    # paths you typed mean what they meant where you typed them; then move
+    # to the project folder, where the defaults live
+    args.config = _from_here(args.config) if args.config != common.get_default("config") else args.config
+    if args.db and "://" not in args.db:
+        args.db = _from_here(args.db)
+    if getattr(args, "xml", None):
+        args.xml = [_from_here(x) for x in args.xml]
+    os.chdir(ROOT)
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = load_settings(args.config, database=DEMO_DB if args.demo else args.db)
     if args.demo:  # the demo account isn't yours; don't warn that it differs
