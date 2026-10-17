@@ -14,10 +14,11 @@ from portfolio.load.db import make_engine
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
-def create_app(database_url: str, *, risk_free_rate: float = 0.0) -> FastAPI:
+def create_app(database_url: str, *, risk_free_rate: float = 0.0, base_currency: str = "SGD") -> FastAPI:
     app = FastAPI(title="IBKR Portfolio Analytics", version="0.2.0")
     app.state.engine = make_engine(database_url)
     app.state.risk_free_rate = risk_free_rate
+    app.state.base_currency = base_currency
 
     @app.get("/api/health", response_model=schemas.Health)
     def health():

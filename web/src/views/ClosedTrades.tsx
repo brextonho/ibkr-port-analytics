@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useApi, useSave } from "../api/client";
 import type { ClosedTrade } from "../api/types";
 import { Metrics } from "../components/Metrics";
-import { groupingOptions } from "../components/tableGrouping";
+import { tableOptions, useRememberLayout, useSavedLayout } from "../components/tables";
 import { EmptyState, LoadingOrError, ViewHeader } from "../components/Panel";
 import { num, pctPoints, signedSgd, toneColor } from "../format";
 
@@ -76,17 +76,18 @@ export function ClosedTrades() {
     [],
   );
 
+  const saved = useSavedLayout("closed-trades-table-v1");
   const table = useMaterialReactTable({
     columns,
     data: rows,
     getRowId: (r) => r.trade_id,
-    ...groupingOptions<ClosedTrade>(),
+    ...tableOptions<ClosedTrade>(),
     enableEditing: true,
     editDisplayMode: "cell",
     enablePagination: false,
     enableDensityToggle: false,
     enableColumnFilters: false,
-    initialState: { density: "compact", showGlobalFilter: true, sorting: [{ id: "close_date", desc: true }] },
+    initialState: { density: "compact", showGlobalFilter: true, sorting: [{ id: "close_date", desc: true }], ...saved },
     muiSearchTextFieldProps: { placeholder: "Search trades", size: "small", variant: "outlined" },
     muiEditTextFieldProps: ({ cell }) => ({
       onBlur: (e) => {
@@ -97,10 +98,11 @@ export function ClosedTrades() {
     }),
     renderTopToolbarCustomActions: () => (
       <Typography variant="body2" color="text.secondary" sx={{ alignSelf: "center", pl: 1 }}>
-        Double-click a note to edit it.
+        Drag a column header here to group by it, or sideways to move it. Double-click a note to edit it.
       </Typography>
     ),
   });
+  useRememberLayout("closed-trades-table-v1", table);
 
   if (isPending || error) return <LoadingOrError loading={isPending} error={error} />;
   if (rows.length === 0)

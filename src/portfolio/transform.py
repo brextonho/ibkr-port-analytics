@@ -26,6 +26,7 @@ RAW_TABLE_ORDER = [
     "cash_transactions",
     "change_in_nav",
     "fx_rates",
+    "cash_balances",
 ]
 
 MAPPINGS: dict[str, dict[str, str]] = {
@@ -161,6 +162,13 @@ MAPPINGS: dict[str, dict[str, str]] = {
         "endingValue": "ending_value",
         "twr": "twr_ib",
     },
+    "cash_balances": {
+        "toDate": "report_date",
+        "currency": "currency",  # also BASE_SUMMARY: all currencies in base
+        "accountId": "account_id",
+        "endingCash": "ending_cash",
+        "endingSettledCash": "ending_settled_cash",
+    },
     "fx_rates": {
         "reportDate": "rate_date",
         "fromCurrency": "currency",
@@ -178,6 +186,7 @@ SOURCE_FRAME = {
     "cash_transactions": "cash_transactions",
     "change_in_nav": "change_in_nav",
     "fx_rates": "fx_rates",
+    "cash_balances": "cash_report",
 }
 
 # Fields the pipeline can't work without, per section: Flex attribute → why.

@@ -223,6 +223,20 @@ class FxRate(Base):
     rate_to_base: Mapped[Optional[Decimal]]
 
 
+class CashBalance(Base):
+    """Ending cash per currency per day, from the Cash Report, in that
+    currency. currency = BASE_SUMMARY holds the total in base currency."""
+
+    __tablename__ = "cash_balances"
+
+    report_date: Mapped[date] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(primary_key=True)
+    account_id: Mapped[Optional[str]]
+    ending_cash: Mapped[Optional[Decimal]]
+    ending_settled_cash: Mapped[Optional[Decimal]]
+    ingested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class BenchmarkPrice(Base):
     __tablename__ = "benchmark_prices"
 

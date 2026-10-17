@@ -1,0 +1,70 @@
+import { Stack } from "@mui/material";
+import {
+  MRT_ExpandButton,
+  type MRT_RowData,
+  type MRT_TableInstance,
+  type MRT_TableOptions,
+  type MRT_TableState,
+} from "material-react-table";
+import { useEffect, useState } from "react";
+
+/** Shared setup for the data tables. Drag a header's handle sideways to
+ *  reorder columns, or up into the bar to group by it; group rows read
+ *  "Core (12)", with "Unassigned" for the empty group (grouping turns null
+ *  into the string "null"). */
+export function tableOptions<T extends MRT_RowData>(): Partial<MRT_TableOptions<T>> {
+  return {
+    enableGrouping: true,
+    enableColumnOrdering: true,
+    enableColumnDragging: true,
+    enableColumnActions: false,
+    groupedColumnMode: "remove",
+    defaultColumn: { size: 100, minSize: 60 },
+    displayColumnDefOptions: {
+      "mrt-row-expand": {
+        size: 160,
+        Cell: ({ row, table }) => {
+          if (!row.getIsGrouped()) return null;
+          const v = String(row.groupingValue ?? "");
+          return (
+            <Stack direction="row" alignItems="center" gap={0.5}>
+              <MRT_ExpandButton row={row} table={table} />
+              <strong>{v === "" || v === "null" ? "Unassigned" : v}</strong>({row.subRows?.length ?? 0})
+            </Stack>
+          );
+        },
+      },
+    },
+  };
+}
+
+// What a table remembers between visits: shown columns, their order,
+// grouping, which groups are open, and sorting.
+const REMEMBERED = ["columnVisibility", "columnOrder", "grouping", "expanded", "sorting"] as const;
+type Remembered = Partial<Pick<MRT_TableState<MRT_RowData>, (typeof REMEMBERED)[number]>>;
+
+/** The layout saved under `key` last time, read once when the table mounts.
+ *  Kept in this browser only; an unreadable or blocked store means defaults. */
+export function useSavedLayout(key: string): Remembered {
+  const [saved] = useState<Remembered>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? "{}") as Remembered;
+    } catch {
+      return {};
+    }
+  });
+  return saved;
+}
+
+/** Save the table's layout under `key` whenever it changes. */
+export function useRememberLayout<T extends MRT_RowData>(key: string, table: MRT_TableInstance<T>) {
+  const state = table.getState();
+  const json = JSON.stringify(Object.fromEntries(REMEMBERED.map((k) => [k, state[k]])));
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, json);
+    } catch {
+      // storage unavailable: the layout lasts until the page reloads
+    }
+  }, [key, json]);
+}

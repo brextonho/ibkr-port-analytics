@@ -1,14 +1,23 @@
 import { Box, Typography } from "@mui/material";
-import { MaterialReactTable, useMaterialReactTable, type MRT_Cell, type MRT_ColumnDef } from "material-react-table";
+import {
+  MaterialReactTable,
+  useMaterialReactTable,
+  type MRT_Cell,
+  type MRT_ColumnDef,
+  type MRT_Row,
+} from "material-react-table";
 import { useMemo } from "react";
 import { useApi, useSave } from "../api/client";
 import type { PositionRow } from "../api/types";
-import { groupingOptions } from "../components/tableGrouping";
+import { tableOptions, useRememberLayout, useSavedLayout } from "../components/tables";
 import { EmptyState, LoadingOrError, ViewHeader } from "../components/Panel";
 import { num, pctPoints, sgd, signedPct, signedSgd, toneColor } from "../format";
 
 // Edit this list to offer more sleeves; an empty choice clears the label.
-const SLEEVES = ["Core", "Satellite"];
+const SLEEVES = ["Core", "Satellite", "Cash"];
+
+// cash rows take a sleeve only; theme, country and notes are for holdings
+const holdingsOnly = (row: MRT_Row<PositionRow>) => row.original.asset_category !== "CASH";
 
 type Editable = "sleeve" | "theme" | "sector" | "geography" | "thesis" | "target_price" | "sellable_date";
 
@@ -130,26 +139,40 @@ export function Positions() {
         editSelectOptions: [{ value: "", label: "None" }, ...SLEEVES.map((s) => ({ value: s, label: s }))],
         size: 100,
       },
-      { accessorKey: "theme", header: "Theme", size: 120 },
-      { accessorKey: "sector", header: "Sector", size: 120 },
+      { accessorKey: "theme", header: "Theme", size: 120, enableEditing: holdingsOnly },
+      { accessorKey: "sector", header: "Sector", size: 120, enableEditing: holdingsOnly },
       {
         id: "geography",
+        enableEditing: holdingsOnly,
         accessorFn: (r) => r.geography ?? r.issuer_country_code,
         header: "Country",
         size: 90,
       },
-      { accessorKey: "sellable_date", header: "Sellable from", size: 110, muiEditTextFieldProps: { placeholder: "YYYY-MM-DD" } },
-      { accessorKey: "target_price", header: "Target price", enableGrouping: false, muiTableBodyCellProps: right },
-      { accessorKey: "thesis", header: "Thesis", enableGrouping: false, size: 280 },
+      {
+        accessorKey: "sellable_date",
+        header: "Sellable from",
+        size: 110,
+        enableEditing: holdingsOnly,
+        muiEditTextFieldProps: { placeholder: "YYYY-MM-DD" },
+      },
+      {
+        accessorKey: "target_price",
+        header: "Target price",
+        enableGrouping: false,
+        enableEditing: holdingsOnly,
+        muiTableBodyCellProps: right,
+      },
+      { accessorKey: "thesis", header: "Thesis", enableGrouping: false, size: 280, enableEditing: holdingsOnly },
     ],
     [rows],
   );
 
+  const saved = useSavedLayout("positions-table-v1");
   const table = useMaterialReactTable({
     columns,
     data: rows,
     getRowId: (r) => r.conid,
-    ...groupingOptions<PositionRow>(),
+    ...tableOptions<PositionRow>(),
     enableEditing: true,
     editDisplayMode: "cell",
     enablePagination: false,
@@ -161,6 +184,7 @@ export function Positions() {
       showGlobalFilter: true,
       columnVisibility: { sector: false, target_price: false, thesis: false },
       sorting: [{ id: "position_value_sgd", desc: true }],
+      ...saved,
     },
     muiTableContainerProps: { sx: { maxHeight: "calc(100vh - 260px)" } },
     muiSearchTextFieldProps: { placeholder: "Search holdings", size: "small", variant: "outlined" },
@@ -177,10 +201,11 @@ export function Positions() {
     }),
     renderTopToolbarCustomActions: () => (
       <Typography variant="body2" color="text.secondary" sx={{ alignSelf: "center", pl: 1 }}>
-        Drag a column header here to group by it. Double-click a sleeve, theme, country or note to edit it.
+        Drag a column header here to group by it, or sideways to move it. Double-click a sleeve, theme, country or note to edit it.
       </Typography>
     ),
   });
+  useRememberLayout("positions-table-v1", table);
 
   if (isPending || error) return <LoadingOrError loading={isPending} error={error} />;
   if (rows.length === 0) return <EmptyState>No holdings yet. Run an ingest to load your positions.</EmptyState>;
@@ -189,7 +214,7 @@ export function Positions() {
     <div>
       <ViewHeader
         title="Positions"
-        note={`${rows.length} holdings on ${rows[0].snapshot_date}. Average cost and last price are in each holding's own currency.`}
+        note={`${rows.filter((r) => r.asset_category !== "CASH").length} holdings plus cash on ${rows[0].snapshot_date}. Average cost and last price are in each holding's own currency.`}
       />
       {save.error && (
         <Typography color="error" mb={1}>

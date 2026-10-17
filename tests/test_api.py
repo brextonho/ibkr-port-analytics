@@ -57,7 +57,7 @@ def test_fx_empty_for_single_day_fixture(client):
 
 
 def test_positions_join_securities_and_annotations(client):
-    rows = client.get("/api/positions").json()
+    rows = [r for r in client.get("/api/positions").json() if r["asset_category"] != "CASH"]
     assert len(rows) == 7
     cspx = next(r for r in rows if r["symbol"] == "CSPX")
     assert cspx["sub_category"] == "ETF"
@@ -65,6 +65,21 @@ def test_positions_join_securities_and_annotations(client):
     assert cspx["sleeve"] is None
     values = [r["position_value_sgd"] for r in rows]
     assert values == sorted(values, reverse=True)
+
+
+def test_cash_rows_tie_to_ibs_base_total(client):
+    # fixture Cash Report: SGD 85.32 + USD 1250.40 (+ EUR 0, skipped) = SGD 1697.21064
+    cash = {r["currency"]: r for r in client.get("/api/positions").json() if r["asset_category"] == "CASH"}
+    assert set(cash) == {"SGD", "USD"}
+    assert cash["USD"]["quantity"] == pytest.approx(1250.4)
+    assert cash["SGD"]["position_value_sgd"] == pytest.approx(85.32)
+    assert sum(r["position_value_sgd"] for r in cash.values()) == pytest.approx(1697.21064, abs=0.01)
+    assert cash["USD"]["conid"] == "CASH.USD" and cash["USD"]["unrealized_pnl"] is None
+
+
+def test_positions_and_cash_add_up_to_nav_less_accruals(client):
+    total = sum(r["percent_of_nav"] for r in client.get("/api/positions").json())
+    assert total == pytest.approx(100 - 18.4512 / 96711.27489 * 100, abs=0.05)
 
 
 def test_avg_cost_local_is_in_the_quote_currency(client):
@@ -84,13 +99,30 @@ def test_annotation_roundtrip_keeps_unsent_fields(client):
     assert (cspx["sleeve"], cspx["thesis"], cspx["theme"]) == ("Core", "Beta.", "US large cap")
 
 
+def test_share_of_nav_is_value_over_nav_not_ibs_figure(client):
+    # IB's percentOfNAV is share of invested value; ours divides by NAV
+    cspx = next(r for r in client.get("/api/positions").json() if r["symbol"] == "CSPX")
+    assert cspx["percent_of_nav"] == pytest.approx(cspx["position_value_sgd"] / 96711.27489 * 100)
+
+
+def test_cash_rows_take_a_sleeve(client):
+    assert client.put("/api/positions/CASH.USD", json={"sleeve": "Cash"}).status_code == 200
+    usd = next(r for r in client.get("/api/positions").json() if r["conid"] == "CASH.USD")
+    assert usd["sleeve"] == "Cash"
+    sleeves = {s["bucket"] for s in client.get("/api/exposures", params={"by": "sleeve"}).json()}
+    assert "Cash" in sleeves
+    assert client.put("/api/positions/CASH.XYZ", json={"sleeve": "Cash"}).status_code == 404
+    client.put("/api/positions/CASH.USD", json={"sleeve": None})
+
+
 def test_annotation_unknown_conid_404(client):
     assert client.put("/api/positions/000", json={"sleeve": "Core"}).status_code == 404
 
 
-def test_exposures_currency(client):
+def test_exposures_currency_include_cash(client):
     slices = client.get("/api/exposures", params={"by": "currency"}).json()
-    assert sum(s["pct_of_nav"] for s in slices) == pytest.approx(98.22, abs=0.1)
+    # holdings + cash = NAV less the 18.45 SGD of accrued dividends
+    assert sum(s["pct_of_nav"] for s in slices) == pytest.approx(100 - 18.4512 / 96711.27489 * 100, abs=0.01)
     assert slices == sorted(slices, key=lambda s: -s["value_sgd"])
 
 

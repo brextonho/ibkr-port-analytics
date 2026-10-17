@@ -18,6 +18,7 @@ SECTIONS = {
     "securities": "SecuritiesInfo",
     "fx_rates": "ConversionRates",
     "change_in_nav": "ChangeInNAV",
+    "cash_report": "CashReport",
 }
 
 
