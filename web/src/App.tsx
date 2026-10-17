@@ -1,63 +1,101 @@
-import { useState } from "react";
-import { setThemePref, useThemePref, type ThemePref } from "./theme";
+import DarkModeOutlined from "@mui/icons-material/DarkModeOutlined";
+import LightModeOutlined from "@mui/icons-material/LightModeOutlined";
+import { Box, Container, IconButton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
+import { useColorScheme } from "@mui/material/styles";
+import { useApi } from "./api/client";
+import type { IngestRunRow } from "./api/types";
+import { useTab } from "./hooks";
+import { useResolvedMode } from "./theme";
+import { ClosedTrades } from "./views/ClosedTrades";
 import { Fx } from "./views/Fx";
-import { Journal } from "./views/Journal";
 import { Ops } from "./views/Ops";
 import { Overview } from "./views/Overview";
 import { Positions } from "./views/Positions";
 import { Statistics } from "./views/Statistics";
 
 const VIEWS = {
-  Overview: Overview,
-  Statistics: Statistics,
-  FX: Fx,
-  Positions: Positions,
-  "Closed trades": Journal,
-  Ops: Ops,
+  overview: { label: "Overview", view: Overview },
+  statistics: { label: "Statistics", view: Statistics },
+  fx: { label: "FX", view: Fx },
+  positions: { label: "Positions", view: Positions },
+  closed: { label: "Closed trades", view: ClosedTrades },
+  ops: { label: "Ops", view: Ops },
 } as const;
+type ViewKey = keyof typeof VIEWS;
+const KEYS = Object.keys(VIEWS) as ViewKey[];
 
-type ViewName = keyof typeof VIEWS;
+function ThemeToggle() {
+  const { setMode } = useColorScheme();
+  const shown = useResolvedMode();
+  const next = shown === "light" ? "dark" : "light";
+  return (
+    <Tooltip title={`Switch to ${next} mode`}>
+      <IconButton aria-label={`Switch to ${next} mode`} onClick={() => setMode(next)} size="small">
+        {shown === "light" ? <LightModeOutlined fontSize="small" /> : <DarkModeOutlined fontSize="small" />}
+      </IconButton>
+    </Tooltip>
+  );
+}
 
-const THEMES: { value: ThemePref; label: string }[] = [
-  { value: "system", label: "Auto" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
+/** Last ingest at a glance; click through to Ops for the details. */
+function LastRun({ onOpen }: { onOpen: () => void }) {
+  const { data } = useApi<IngestRunRow[]>("/ops/runs?n=1");
+  const run = data?.[0];
+  if (!run) return null;
+  const ok = run.status === "success";
+  return (
+    <Tooltip title={ok ? "Last ingest succeeded" : `Last ingest failed: ${run.error_message ?? run.error_code}`}>
+      <Typography
+        component="button"
+        onClick={onOpen}
+        variant="body2"
+        sx={{ border: 0, background: "none", cursor: "pointer", color: ok ? "text.secondary" : "error.main", p: 0 }}
+      >
+        <Box component="span" sx={{ color: ok ? "success.main" : "error.main", mr: 0.5 }}>
+          {ok ? "●" : "▲"}
+        </Box>
+        {ok ? `Data to ${run.watermark_after}` : "Last ingest failed"}
+      </Typography>
+    </Tooltip>
+  );
+}
 
 export default function App() {
-  const [active, setActive] = useState<ViewName>("Overview");
-  const ActiveView = VIEWS[active];
-  const theme = useThemePref();
+  const [tab, setTab] = useTab(KEYS);
+  const View = VIEWS[tab].view;
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">IBKR Portfolio Analytics</span>
-        <nav className="tabs">
-          {(Object.keys(VIEWS) as ViewName[]).map((name) => (
-            <button
-              key={name}
-              className={name === active ? "tab active" : "tab"}
-              onClick={() => setActive(name)}
+    <>
+      <Box component="header" sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
+        <Container maxWidth="xl">
+          <Stack direction="row" alignItems="center" columnGap={{ xs: 1.5, md: 3 }} sx={{ minHeight: 56 }} flexWrap="wrap">
+            <Typography sx={{ fontWeight: 600, letterSpacing: "-0.01em", mr: "auto", "@media (min-width:900px)": { mr: 0 } }}>
+              IBKR Portfolio
+            </Typography>
+            <Tabs
+              value={tab}
+              onChange={(_, t: ViewKey) => setTab(t)}
+              variant="scrollable"
+              scrollButtons={false}
+              sx={{
+                // own row on phones, inline from tablet up
+                flex: { xs: "1 1 100%", md: 1 },
+                order: { xs: 3, md: 0 },
+                minHeight: 48,
+                "& .MuiTab-root": { minHeight: 48 },
+              }}
             >
-              {name}
-            </button>
-          ))}
-        </nav>
-        <div className="period-picker theme-toggle" role="group" aria-label="Theme">
-          {THEMES.map((t) => (
-            <button
-              key={t.value}
-              className={t.value === theme ? "period active" : "period"}
-              onClick={() => setThemePref(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </header>
-      <main className="content">
-        <ActiveView />
-      </main>
-    </div>
+              {KEYS.map((k) => (
+                <Tab key={k} value={k} label={VIEWS[k].label} />
+              ))}
+            </Tabs>
+            <LastRun onOpen={() => setTab("ops")} />
+            <ThemeToggle />
+          </Stack>
+        </Container>
+      </Box>
+      <Container component="main" maxWidth="xl" sx={{ py: 3 }}>
+        <View />
+      </Container>
+    </>
   );
 }

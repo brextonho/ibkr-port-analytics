@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio.analytics.stats import performance, relative_stats, series_stats
+from portfolio.analytics.stats import performance, relative_stats, series_stats, weekly
 
 DATES = pd.date_range("2026-01-05", periods=3, freq="B")
 R = pd.Series([0.10, -0.05, 0.02], index=DATES)
@@ -37,12 +37,21 @@ def test_first_day_loss_is_a_drawdown_from_the_base():
 
 
 def test_relative_stats_of_a_2x_leveraged_benchmark():
-    b = pd.Series([0.01, -0.02, 0.015, -0.005], index=pd.date_range("2026-01-05", periods=4))
+    # one return per Friday, so weekly compounding leaves them unchanged
+    b = pd.Series([0.01, -0.02, 0.015, -0.005], index=pd.date_range("2026-01-09", periods=4, freq="W-FRI"))
     rel = relative_stats(2 * b, b)
+    assert rel["weeks"] == 4
     assert rel["beta"] == pytest.approx(2.0)
     assert rel["correlation"] == pytest.approx(1.0)
     assert rel["up_capture"] == pytest.approx(2.0)
     assert rel["down_capture"] == pytest.approx(2.0)
+
+
+def test_days_compound_into_friday_weeks():
+    days = pd.date_range("2026-01-05", periods=10, freq="B")  # two Mon–Fri weeks
+    w = weekly(pd.Series(0.01, index=days))
+    assert w.index.tolist() == [pd.Timestamp("2026-01-09"), pd.Timestamp("2026-01-16")]
+    assert w.tolist() == pytest.approx([1.01**5 - 1] * 2)
 
 
 def test_performance_excludes_the_base_rows_return_and_ties_out():

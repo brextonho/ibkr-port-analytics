@@ -1,114 +1,120 @@
+import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import Grid from "@mui/material/Grid2";
+import { useState } from "react";
 import { Doughnut } from "react-chartjs-2";
+import { useApi } from "../api/client";
 import type { Dimension, ExposureSlice } from "../api/types";
 import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
 import { pctPoints, sgd } from "../format";
 import { usePalette } from "../theme";
 
-const DIMENSIONS: Dimension[] = ["asset_class", "currency", "geography", "sleeve", "theme", "sector"];
+const DIMENSIONS: { value: Dimension; label: string }[] = [
+  { value: "asset_class", label: "Asset class" },
+  { value: "currency", label: "Currency" },
+  { value: "geography", label: "Country" },
+  { value: "sleeve", label: "Sleeve" },
+  { value: "theme", label: "Theme" },
+  { value: "sector", label: "Sector" },
+];
 
-/** Presentational: the parent owns `by` and the fetch so it can show the
- *  snapshot date in its own header. */
-export function Exposures({
-  by,
-  onByChange,
-  data,
-  error,
-  loading,
-}: {
-  by: Dimension;
-  onByChange: (by: Dimension) => void;
-  data: ExposureSlice[] | null;
-  error: string | null;
-  loading: boolean;
-}) {
+/** Where the money is today, by one dimension, from the latest holdings. */
+export function Exposures() {
+  const [by, setBy] = useState<Dimension>("currency");
   const p = usePalette();
+  const { data, error, isPending } = useApi<ExposureSlice[]>(`/exposures?by=${by}`);
+  const color = (i: number) => p.series[Math.min(i, p.series.length - 1)];
 
   return (
-    <div>
-      <div className="sub-header">
-        <h2>Exposures</h2>
-        <div className="period-picker" role="group" aria-label="Dimension">
+    <Box>
+      <Stack direction="row" alignItems="baseline" justifyContent="space-between" gap={2} flexWrap="wrap" mb={1.5}>
+        <Typography variant="h2">
+          Exposure
+          {data?.[0] && (
+            <Typography component="span" variant="body2" color="text.secondary" ml={1}>
+              holdings on {data[0].snapshot_date}
+            </Typography>
+          )}
+        </Typography>
+        <ToggleButtonGroup size="small" exclusive value={by} onChange={(_, d: Dimension | null) => d && setBy(d)} aria-label="Group exposure by">
           {DIMENSIONS.map((d) => (
-            <button
-              key={d}
-              className={d === by ? "period active" : "period"}
-              onClick={() => onByChange(d)}
-            >
-              {d.replace("_", " ")}
-            </button>
+            <ToggleButton key={d.value} value={d.value}>
+              {d.label}
+            </ToggleButton>
           ))}
-        </div>
-      </div>
+        </ToggleButtonGroup>
+      </Stack>
 
-      {!data ? (
-        <LoadingOrError loading={loading} error={error} />
+      {isPending || error ? (
+        <LoadingOrError loading={isPending} error={error} />
       ) : data.length === 0 ? (
-        <EmptyState>
-          No {by.replace("_", " ")} exposures yet.
-        </EmptyState>
+        <EmptyState>No holdings yet.</EmptyState>
       ) : (
-        <div className="two-col">
-          <Panel title={`By ${by.replace("_", " ")}`} height={320}>
-            <Doughnut
-              data={{
-                labels: data.map((s) => s.bucket),
-                datasets: [
-                  {
-                    data: data.map((s) => s.value_sgd ?? 0),
-                    backgroundColor: data.map((_, i) =>
-                      p.series[Math.min(i, p.series.length - 1)],
-                    ),
-                    // 2px surface gap between fills (mark spec)
-                    borderColor: p.surface,
-                    borderWidth: 2,
-                  },
-                ],
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: "right", labels: { color: p.ink2, boxWidth: 12 } },
-                  tooltip: {
-                    callbacks: {
-                      label: (ctx) => {
-                        const slice = data[ctx.dataIndex];
-                        return `${slice.bucket}: ${sgd(slice.value_sgd)} (${pctPoints(slice.pct_of_nav)})`;
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, md: 5 }}>
+            <Panel height={280}>
+              <Doughnut
+                data={{
+                  labels: data.map((s) => s.bucket),
+                  datasets: [
+                    {
+                      data: data.map((s) => s.value_sgd ?? 0),
+                      backgroundColor: data.map((_, i) => color(i)),
+                      borderColor: p.surface, // 2px gap between slices
+                      borderWidth: 2,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  cutout: "62%",
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => {
+                          const s = data[ctx.dataIndex];
+                          return `${s.bucket}: ${sgd(s.value_sgd)} (${pctPoints(s.pct_of_nav, 1)})`;
+                        },
                       },
                     },
                   },
-                },
-              }}
-            />
-          </Panel>
-          <Panel>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Bucket</th>
-                  <th className="num">Value (SGD)</th>
-                  <th className="num">% of NAV</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((s, i) => (
-                  <tr key={s.bucket}>
-                    <td>
-                      <span
-                        className="swatch"
-                        style={{ background: p.series[Math.min(i, p.series.length - 1)] }}
-                      />
-                      {s.bucket}
-                    </td>
-                    <td className="num">{sgd(s.value_sgd)}</td>
-                    <td className="num">{pctPoints(s.pct_of_nav)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Panel>
-        </div>
+                }}
+              />
+            </Panel>
+          </Grid>
+          <Grid size={{ xs: 12, md: 7 }}>
+            <Panel>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{DIMENSIONS.find((d) => d.value === by)?.label}</TableCell>
+                    <TableCell align="right">Value (SGD)</TableCell>
+                    <TableCell align="right">Share of NAV</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.map((s, i) => (
+                    <TableRow key={s.bucket}>
+                      <TableCell>
+                        <Box component="span" sx={{ display: "inline-block", width: 10, height: 10, borderRadius: "2px", bgcolor: color(i), mr: 1 }} />
+                        {s.bucket}
+                      </TableCell>
+                      <TableCell align="right">{sgd(s.value_sgd)}</TableCell>
+                      <TableCell align="right">{pctPoints(s.pct_of_nav, 1)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {(by === "sleeve" || by === "theme" || by === "sector") && (
+                <Typography variant="caption" color="text.secondary" component="p" mt={1}>
+                  Set these per holding on the Positions tab.
+                </Typography>
+              )}
+            </Panel>
+          </Grid>
+        </Grid>
       )}
-    </div>
+    </Box>
   );
 }

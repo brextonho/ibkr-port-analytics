@@ -1,4 +1,5 @@
-import type { ChartData, ChartOptions } from "chart.js";
+import { Stack, Typography } from "@mui/material";
+import type { Chart, ChartData, ChartOptions } from "chart.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Line } from "react-chartjs-2";
 import { RANGE_EVENTS, rangeSelectPlugin, type Range, type RangeSelectState } from "../chartRange";
@@ -8,10 +9,10 @@ import { Panel } from "./Panel";
 export interface ReadoutItem {
   label: string;
   value: string;
-  tone?: "good" | "bad";
+  color?: string; // MUI palette path
 }
 
-/** Line chart in a Panel with hover crosshair and drag-to-measure readout. */
+/** Line chart in a Panel with a hover crosshair and drag-to-measure readout. */
 export function MeasurableLine({
   title,
   height,
@@ -32,21 +33,11 @@ export function MeasurableLine({
   resetKey: unknown; // selection clears when this changes (e.g. period)
 }) {
   const [range, setRange] = useState<Range | null>(null);
-  const chartRef = useRef<import("chart.js").Chart<"line"> | null>(null);
+  const chartRef = useRef<Chart<"line"> | null>(null);
 
-  // Plugin reads the latest state through a ref so it can stay one instance.
-  const stateRef = useRef<RangeSelectState>({
-    range,
-    fill: "",
-    line: "",
-    onChange: setRange,
-  });
-  stateRef.current = {
-    range,
-    fill: `${palette.series[0]}26`,
-    line: palette.axis,
-    onChange: setRange,
-  };
+  // The plugin reads the latest state through a ref so it can stay one instance.
+  const stateRef = useRef<RangeSelectState>({ range, fill: "", line: "", onChange: setRange });
+  stateRef.current = { range, fill: `${palette.series[0]}26`, line: palette.axis, onChange: setRange };
   const plugin = useMemo(() => rangeSelectPlugin(() => stateRef.current), []);
 
   useEffect(() => setRange(null), [resetKey]);
@@ -61,26 +52,30 @@ export function MeasurableLine({
 
   const data = useMemo(() => ({ labels, datasets }), [labels, datasets]);
   const opts = useMemo(
-    () => ({ ...options, events: [...RANGE_EVENTS] }) as ChartOptions<"line">,
+    () => ({ ...options, animation: false, events: [...RANGE_EVENTS] }) as ChartOptions<"line">,
     [options],
   );
 
-  let readout: ReactNode = <span className="range-hint">Drag to measure</span>;
+  let readout: ReactNode = (
+    <Typography variant="body2" color="text.secondary">
+      Drag across the chart to measure
+    </Typography>
+  );
   if (range && range.end < labels.length) {
     readout = (
-      <span className="range-readout">
-        <span className="range-dates">
-          {labels[range.start]} → {labels[range.end]}
-        </span>
+      <Stack direction="row" gap={2} flexWrap="wrap" alignItems="baseline">
+        <Typography variant="body2" color="text.secondary">
+          {labels[range.start]} to {labels[range.end]}
+        </Typography>
         {describe(range.start, range.end).map((item) => (
-          <span key={item.label} className="range-item">
+          <Typography key={item.label} variant="body2">
             {item.label}{" "}
-            <strong className={item.tone ? `delta-${item.tone === "good" ? "up" : "down"}` : undefined}>
+            <Typography component="strong" variant="body2" fontWeight={600} color={item.color}>
               {item.value}
-            </strong>
-          </span>
+            </Typography>
+          </Typography>
         ))}
-      </span>
+      </Stack>
     );
   }
 

@@ -37,6 +37,5 @@ Chart.register(
   Filler,
 );
 
-Chart.defaults.font.family =
-  'system-ui, -apple-system, "Segoe UI", sans-serif';
+Chart.defaults.font.family = '"Instrument Sans Variable", system-ui, sans-serif';
 Chart.defaults.plugins.tooltip.position = "cursor";

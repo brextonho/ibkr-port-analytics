@@ -1,6 +1,74 @@
-// Validated reference palette (dataviz skill, both modes pass the six checks).
-// CSS mirrors these in index.css custom properties; charts need the JS values.
-import { useSyncExternalStore } from "react";
+// One theme for the whole app. MUI owns light/dark (it follows the OS until
+// the sun/moon toggle pins a mode, and remembers it); chart.js reads the
+// matching Palette below because canvas can't use CSS variables.
+import { createTheme, useColorScheme } from "@mui/material/styles";
+
+const FONT = '"Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif';
+
+const tokens = {
+  light: {
+    page: "#f3f5f4",
+    surface: "#ffffff",
+    ink: "#16232b",
+    muted: "#5f6b72",
+    rule: "#dce2e0",
+    accent: "#1f5fad",
+    good: "#127a4b",
+    bad: "#b83a2c",
+  },
+  dark: {
+    page: "#0f1518",
+    surface: "#162026",
+    ink: "#e4eaec",
+    muted: "#8e9ba1",
+    rule: "#24323a",
+    accent: "#6fa8ea",
+    good: "#3fb984",
+    bad: "#f07a66",
+  },
+} as const;
+
+function scheme(mode: "light" | "dark") {
+  const t = tokens[mode];
+  return {
+    palette: {
+      primary: { main: t.accent },
+      success: { main: t.good },
+      error: { main: t.bad },
+      background: { default: t.page, paper: t.surface },
+      text: { primary: t.ink, secondary: t.muted },
+      divider: t.rule,
+    },
+  };
+}
+
+export const theme = createTheme({
+  cssVariables: { colorSchemeSelector: "data" },
+  colorSchemes: { light: scheme("light"), dark: scheme("dark") },
+  shape: { borderRadius: 6 },
+  typography: {
+    fontFamily: FONT,
+    fontSize: 14,
+    h1: { fontSize: "1.75rem", fontWeight: 600, letterSpacing: "-0.01em" },
+    h2: { fontSize: "1.125rem", fontWeight: 600 },
+    h3: { fontSize: "0.9375rem", fontWeight: 600 },
+    button: { textTransform: "none", fontWeight: 500 },
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        // every number lines up in columns
+        body: { fontVariantNumeric: "tabular-nums" },
+      },
+    },
+    MuiPaper: { defaultProps: { variant: "outlined" } },
+    MuiToggleButton: { styleOverrides: { root: { padding: "4px 10px", fontSize: "0.8125rem" } } },
+    MuiTableCell: { styleOverrides: { root: { padding: "6px 12px" } } },
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Chart palette (validated categorical slots; text wears ink, never series color)
 
 export interface Palette {
   mode: "light" | "dark";
@@ -10,125 +78,52 @@ export interface Palette {
   muted: string;
   grid: string;
   axis: string;
-  series: string[]; // categorical slots, fixed order — never cycled
+  series: string[]; // fixed order — never cycled
   drawdown: string;
   good: string;
-  critical: string;
+  bad: string;
 }
 
 export const LIGHT: Palette = {
   mode: "light",
-  surface: "#fcfcfb",
-  ink: "#0b0b0b",
-  ink2: "#52514e",
-  muted: "#898781",
-  grid: "#e1e0d9",
-  axis: "#c3c2b7",
-  series: [
-    "#2a78d6",
-    "#008300",
-    "#e87ba4",
-    "#eda100",
-    "#1baf7a",
-    "#eb6834",
-    "#4a3aa7",
-    "#e34948",
-  ],
+  surface: tokens.light.surface,
+  ink: tokens.light.ink,
+  ink2: "#3c4a52",
+  muted: tokens.light.muted,
+  grid: "#e6eae8",
+  axis: "#c7cfcc",
+  series: ["#2a78d6", "#008300", "#e87ba4", "#eda100", "#1baf7a", "#eb6834", "#4a3aa7", "#e34948"],
   drawdown: "#e34948",
-  good: "#006300",
-  critical: "#d03b3b",
+  good: tokens.light.good,
+  bad: tokens.light.bad,
 };
 
 export const DARK: Palette = {
   mode: "dark",
-  surface: "#1a1a19",
-  ink: "#ffffff",
-  ink2: "#c3c2b7",
-  muted: "#898781",
-  grid: "#2c2c2a",
-  axis: "#383835",
-  series: [
-    "#3987e5",
-    "#008300",
-    "#d55181",
-    "#c98500",
-    "#199e70",
-    "#d95926",
-    "#9085e9",
-    "#e66767",
-  ],
+  surface: tokens.dark.surface,
+  ink: tokens.dark.ink,
+  ink2: "#c2ccd0",
+  muted: tokens.dark.muted,
+  grid: "#1f2a30",
+  axis: "#33424a",
+  series: ["#3987e5", "#0ca30c", "#d55181", "#c98500", "#199e70", "#d95926", "#9085e9", "#e66767"],
   drawdown: "#e66767",
-  good: "#0ca30c",
-  critical: "#d03b3b",
+  good: tokens.dark.good,
+  bad: tokens.dark.bad,
 };
 
-// Theme preference: "system" follows the OS; "light"/"dark" pin it. The pinned
-// choice is mirrored onto <html data-theme> so index.css swaps tokens too.
-export type ThemePref = "system" | "light" | "dark";
-
-const THEME_KEY = "theme";
-const media = window.matchMedia("(prefers-color-scheme: dark)");
-const listeners = new Set<() => void>();
-let pref: ThemePref = readPref();
-
-function readPref(): ThemePref {
-  try {
-    const v = localStorage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "system";
-  } catch {
-    return "system";
-  }
-}
-
-function applyPref() {
-  const root = document.documentElement;
-  if (pref === "system") delete root.dataset.theme;
-  else root.dataset.theme = pref;
-}
-
-function emit() {
-  listeners.forEach((l) => l());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-applyPref();
-media.addEventListener("change", emit);
-
-export function setThemePref(next: ThemePref) {
-  pref = next;
-  try {
-    if (next === "system") localStorage.removeItem(THEME_KEY);
-    else localStorage.setItem(THEME_KEY, next);
-  } catch {
-    // storage unavailable: the choice lasts for this page load only
-  }
-  applyPref();
-  emit();
-}
-
-export function useThemePref(): ThemePref {
-  return useSyncExternalStore(subscribe, () => pref);
+/** "light" | "dark" as currently shown (resolving "system"). */
+export function useResolvedMode(): "light" | "dark" {
+  const { mode, systemMode } = useColorScheme();
+  return (mode === "system" ? systemMode : mode) === "dark" ? "dark" : "light";
 }
 
 export function usePalette(): Palette {
-  const mode = useSyncExternalStore(subscribe, () =>
-    pref === "system" ? (media.matches ? "dark" : "light") : pref,
-  );
-  return mode === "dark" ? DARK : LIGHT;
+  return useResolvedMode() === "dark" ? DARK : LIGHT;
 }
 
 /** Stable entity→slot mapping: sort entities once, fold overflow past 8. */
 export function seriesColorMap(entities: string[], palette: Palette): Map<string, string> {
   const sorted = [...new Set(entities)].sort();
-  const map = new Map<string, string>();
-  sorted.forEach((entity, i) => {
-    map.set(entity, palette.series[Math.min(i, palette.series.length - 1)]);
-  });
-  return map;
+  return new Map(sorted.map((e, i) => [e, palette.series[Math.min(i, palette.series.length - 1)]]));
 }

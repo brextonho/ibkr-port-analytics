@@ -1,51 +1,52 @@
-import { useMemo, useState } from "react";
-import type {
-  DividendRow,
-  Dimension,
-  ExposureSlice,
-  Performance,
-  Period,
-  SeriesStats,
-} from "../api/types";
-import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
+import { Box, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import Grid from "@mui/material/Grid2";
+import { useMemo } from "react";
+import { useApi } from "../api/client";
+import type { DividendRow, Performance, SeriesStats } from "../api/types";
+import { Metrics } from "../components/Metrics";
+import { EmptyState, LoadingOrError, Panel, ViewHeader } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { num, pct, sgd } from "../format";
-import { useFetch } from "../hooks";
+import { num, pct, sgd, signedPct, toneColor } from "../format";
+import { usePeriod } from "../hooks";
 import { Exposures } from "./Exposures";
-import { StatCard } from "../components/StatCard";
-
-type Tone = "good" | "bad" | undefined;
-
-const signedPct = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${pct(x)}`);
-const toneOf = (x: number | null): Tone => (x === null ? undefined : x < 0 ? "bad" : "good");
-const badIfNeg = (x: number | null): Tone => (x !== null && x < 0 ? "bad" : undefined);
 
 interface Cell {
   value: string;
-  tone?: Tone;
-  sub?: string; // muted aside, e.g. the date of the best day
+  color?: string;
+  note?: string; // e.g. the date of the best day
 }
 
+const negative = (x: number | null) => (x !== null && x < 0 ? "error.main" : undefined);
+
 const SERIES_ROWS: { label: string; cell: (s: SeriesStats) => Cell }[] = [
-  { label: "Return", cell: (s) => ({ value: signedPct(s.total_return), tone: toneOf(s.total_return) }) },
-  { label: "Annualized return", cell: (s) => ({ value: signedPct(s.annualized), tone: toneOf(s.annualized) }) },
-  { label: "Volatility (ann.)", cell: (s) => ({ value: pct(s.volatility) }) },
-  { label: "Sharpe", cell: (s) => ({ value: num(s.sharpe) }) },
-  { label: "Sortino", cell: (s) => ({ value: num(s.sortino) }) },
-  { label: "Max drawdown", cell: (s) => ({ value: pct(s.max_drawdown), tone: badIfNeg(s.max_drawdown) }) },
-  { label: "Current drawdown", cell: (s) => ({ value: pct(s.current_drawdown), tone: badIfNeg(s.current_drawdown) }) },
-  { label: "Calmar", cell: (s) => ({ value: num(s.calmar) }) },
-  {
-    label: "Best day",
-    cell: (s) => ({ value: signedPct(s.best_day?.r ?? null), tone: "good", sub: s.best_day?.date }),
-  },
-  {
-    label: "Worst day",
-    cell: (s) => ({ value: signedPct(s.worst_day?.r ?? null), tone: "bad", sub: s.worst_day?.date }),
-  },
-  { label: "Positive days", cell: (s) => ({ value: pct(s.positive_days, 0) }) },
-  { label: "1-day VaR 95% (hist.)", cell: (s) => ({ value: pct(s.var95), tone: badIfNeg(s.var95) }) },
+  { label: "Return", cell: (s) => ({ value: signedPct(s.total_return), color: toneColor(s.total_return) }) },
+  { label: "Annualized return", cell: (s) => ({ value: signedPct(s.annualized), color: toneColor(s.annualized) }) },
+  { label: "Volatility, annualized", cell: (s) => ({ value: pct(s.volatility) }) },
+  { label: "Sharpe ratio", cell: (s) => ({ value: num(s.sharpe) }) },
+  { label: "Sortino ratio", cell: (s) => ({ value: num(s.sortino) }) },
+  { label: "Max drawdown", cell: (s) => ({ value: pct(s.max_drawdown), color: negative(s.max_drawdown) }) },
+  { label: "Current drawdown", cell: (s) => ({ value: pct(s.current_drawdown), color: negative(s.current_drawdown) }) },
+  { label: "Calmar ratio", cell: (s) => ({ value: num(s.calmar) }) },
+  { label: "Best day", cell: (s) => ({ value: signedPct(s.best_day?.r), color: "success.main", note: s.best_day?.date }) },
+  { label: "Worst day", cell: (s) => ({ value: signedPct(s.worst_day?.r), color: "error.main", note: s.worst_day?.date }) },
+  { label: "Days up", cell: (s) => ({ value: pct(s.positive_days, 0) }) },
+  { label: "1-day VaR, 95% historical", cell: (s) => ({ value: pct(s.var95), color: negative(s.var95) }) },
 ];
+
+function CellView({ cell }: { cell: Cell }) {
+  return (
+    <>
+      {cell.note && (
+        <Typography component="span" variant="caption" color="text.secondary" mr={1}>
+          {cell.note}
+        </Typography>
+      )}
+      <Box component="span" sx={{ color: cell.color }}>
+        {cell.value}
+      </Box>
+    </>
+  );
+}
 
 interface DividendSummary {
   symbol: string;
@@ -53,7 +54,7 @@ interface DividendSummary {
   tax: number;
 }
 
-/** Group dividend and withholding rows by security, largest net first. */
+/** Dividend and withholding rows grouped by security, largest net first. */
 function summarizeDividends(rows: DividendRow[]): DividendSummary[] {
   const bySymbol = new Map<string, DividendSummary>();
   for (const row of rows) {
@@ -66,198 +67,153 @@ function summarizeDividends(rows: DividendRow[]): DividendSummary[] {
   return [...bySymbol.values()].sort((a, b) => b.gross + b.tax - (a.gross + a.tax));
 }
 
-function daysBetween(a: string, b: string): number {
-  return (Date.parse(b) - Date.parse(a)) / 86_400_000;
-}
-
-function CellView({ cell }: { cell: Cell }) {
-  return (
-    <>
-      {cell.sub && <span className="cell-sub">{cell.sub}</span>}
-      <span className={cell.tone ? `delta-${cell.tone === "good" ? "up" : "down"}` : undefined}>
-        {cell.value}
-      </span>
-    </>
-  );
-}
-
 export function Statistics() {
-  const [period, setPeriod] = useState<Period>("all");
-  const [by, setBy] = useState<Dimension>("currency");
-  const perf = useFetch<Performance | null>(`/performance?period=${period}`);
-  const exposures = useFetch<ExposureSlice[]>(`/exposures?by=${by}`);
-  const dividends = useFetch<DividendRow[]>(`/dividends?period=${period}`);
+  const [period] = usePeriod();
+  const perf = useApi<Performance | null>(`/performance?period=${period}`);
+  const dividends = useApi<DividendRow[]>(`/dividends?period=${period}`);
   const w = perf.data;
 
-  const divs = useMemo(
-    () => (dividends.data ? summarizeDividends(dividends.data) : []),
-    [dividends.data],
-  );
+  const divs = useMemo(() => summarizeDividends(dividends.data ?? []), [dividends.data]);
   const gross = divs.reduce((t, d) => t + d.gross, 0);
   const tax = divs.reduce((t, d) => t + d.tax, 0);
-  const series = w?.series ?? [];
-  const navs = series.map((d) => d.nav_sgd).filter((v): v is number => v !== null);
-  const avgNav = navs.length > 0 ? navs.reduce((t, v) => t + v, 0) / navs.length : null;
-  const navDays =
-    series.length > 1 ? daysBetween(series[0].report_date, series[series.length - 1].report_date) : 0;
-  // Net dividends over average NAV, scaled to a year of calendar days.
-  const divYield = avgNav && navDays > 0 ? ((gross + tax) / avgNav) * (365 / navDays) : null;
-  const unattributed = divs.some((d) => d.symbol === "Unattributed");
+  const navs = (w?.series ?? []).map((d) => d.nav_sgd).filter((v): v is number => v !== null);
+  const avgNav = navs.length ? navs.reduce((t, v) => t + v, 0) / navs.length : null;
+  const calendarDays = w ? (Date.parse(w.end) - Date.parse(w.start)) / 86_400_000 : 0;
+  // net dividends over average NAV, scaled to a year of calendar days
+  const divYield = avgNav && calendarDays > 0 ? ((gross + tax) / avgNav) * (365 / calendarDays) : null;
 
-  const snapshot = exposures.data?.[0]?.snapshot_date;
-  const asOf = w?.end ?? snapshot;
   const r = w?.relative;
   const relRows: { label: string; cell: Cell }[] = r
     ? [
-        { label: "Excess return", cell: { value: signedPct(r.excess), tone: toneOf(r.excess) } },
+        { label: "Return difference", cell: { value: signedPct(r.excess), color: toneColor(r.excess) } },
         { label: "Beta", cell: { value: num(r.beta) } },
         { label: "Correlation", cell: { value: num(r.correlation) } },
-        { label: "Tracking error (ann.)", cell: { value: pct(r.tracking_error) } },
+        { label: "Tracking error, annualized", cell: { value: pct(r.tracking_error) } },
         { label: "Information ratio", cell: { value: num(r.info_ratio) } },
-        { label: "Up capture", cell: { value: pct(r.up_capture, 0) } },
-        { label: "Down capture", cell: { value: pct(r.down_capture, 0) } },
+        { label: "Up-market capture", cell: { value: pct(r.up_capture, 0) } },
+        { label: "Down-market capture", cell: { value: pct(r.down_capture, 0) } },
       ]
     : [];
 
   return (
     <div>
-      <div className="view-header">
-        <h1>Statistics</h1>
-        <div className="view-header-right">
-          {asOf && (
-            <span className="view-note">
-              as of {asOf}
-              {snapshot && w && snapshot !== w.end && ` · holdings snapshot ${snapshot}`}
-            </span>
-          )}
-          <PeriodPicker value={period} onChange={setPeriod} />
-        </div>
-      </div>
+      <ViewHeader title="Statistics" note={w ? `${w.start} to ${w.end}, ${w.days} trading days` : undefined}>
+        <PeriodPicker />
+      </ViewHeader>
 
-      <Exposures
-        by={by}
-        onByChange={setBy}
-        data={exposures.data}
-        error={exposures.error}
-        loading={exposures.loading}
-      />
+      <Exposures />
 
-      <div className="sub-header">
-        <h2>
-          Risk &amp; return
-          {w && (
-            <span className="view-note sub-header-note">
-              {w.start} → {w.end} · {w.days} trading days
-            </span>
-          )}
-        </h2>
-      </div>
-      {perf.loading && !perf.data ? (
-        <LoadingOrError loading={perf.loading} error={perf.error} />
+      <Typography variant="h2" mt={4} mb={1.5}>
+        Risk and return
+      </Typography>
+      {perf.isPending || perf.error ? (
+        <LoadingOrError loading={perf.isPending} error={perf.error} />
       ) : !w ? (
-        <EmptyState>No returns in this window — run ingestion or pick a longer period.</EmptyState>
+        <EmptyState>No returns in this period yet. Pick a longer period.</EmptyState>
       ) : (
-        <div className={`two-col${perf.loading ? " stale" : ""}`}>
-          <Panel title="Portfolio vs VWRA (SGD)">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  <th className="num">Portfolio</th>
-                  <th className="num">VWRA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {SERIES_ROWS.map((row) => (
-                  <tr key={row.label}>
-                    <td>{row.label}</td>
-                    <td className="num">
-                      <CellView cell={row.cell(w.portfolio)} />
-                    </td>
-                    <td className="num">
-                      {w.benchmark ? <CellView cell={row.cell(w.benchmark)} /> : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {w.days < 252 && (
-              <p className="panel-foot">Annualized return and Calmar need at least a year of data.</p>
-            )}
-          </Panel>
-          <Panel title="Relative to VWRA">
-            {relRows.length === 0 ? (
-              <EmptyState>No benchmark prices in this window.</EmptyState>
-            ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th className="num">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {relRows.map((row) => (
-                    <tr key={row.label}>
-                      <td>{row.label}</td>
-                      <td className="num">
-                        <CellView cell={row.cell} />
-                      </td>
-                    </tr>
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, md: 7 }}>
+            <Panel title="Portfolio and VWRA, both in SGD">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell />
+                    <TableCell align="right">Portfolio</TableCell>
+                    <TableCell align="right">VWRA</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {SERIES_ROWS.map((row) => (
+                    <TableRow key={row.label}>
+                      <TableCell>{row.label}</TableCell>
+                      <TableCell align="right">
+                        <CellView cell={row.cell(w.portfolio)} />
+                      </TableCell>
+                      <TableCell align="right">{w.benchmark ? <CellView cell={row.cell(w.benchmark)} /> : "—"}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
-        </div>
+                </TableBody>
+              </Table>
+              {w.days < 252 && (
+                <Typography variant="caption" color="text.secondary" component="p" mt={1}>
+                  Annualized return and Calmar need at least a year of data.
+                </Typography>
+              )}
+            </Panel>
+          </Grid>
+          <Grid size={{ xs: 12, md: 5 }}>
+            <Panel title="Relative to VWRA">
+              {relRows.length === 0 ? (
+                <EmptyState>No benchmark prices in this period.</EmptyState>
+              ) : (
+                <>
+                  <Table size="small">
+                    <TableBody>
+                      {relRows.map((row) => (
+                        <TableRow key={row.label}>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell align="right">
+                            <CellView cell={row.cell} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <Typography variant="caption" color="text.secondary" component="p" mt={1}>
+                    From {r!.weeks} weekly returns. VWRA closes in London hours before most of your
+                    holdings close in New York, so daily figures would understate beta and correlation.
+                  </Typography>
+                </>
+              )}
+            </Panel>
+          </Grid>
+        </Grid>
       )}
 
-      <div className="sub-header">
-        <h2>Dividends</h2>
-      </div>
-      {!dividends.data ? (
-        <LoadingOrError loading={dividends.loading} error={dividends.error} />
+      <Typography variant="h2" mt={4} mb={1.5}>
+        Dividends
+      </Typography>
+      {dividends.isPending || dividends.error ? (
+        <LoadingOrError loading={dividends.isPending} error={dividends.error} />
       ) : divs.length === 0 ? (
-        <EmptyState>No dividends in this window.</EmptyState>
+        <EmptyState>No dividends in this period.</EmptyState>
       ) : (
-        <div className={dividends.loading ? "stale" : undefined}>
-          <div className="stat-row">
-            <StatCard label="Gross dividends" value={sgd(gross, 2)} tone="good" />
-            <StatCard label="Withholding tax" value={sgd(tax, 2)} tone="bad" sub={gross ? `${pct(-tax / gross, 1)} of gross` : undefined} />
-            <StatCard label="Net dividends" value={sgd(gross + tax, 2)} tone="good" />
-            <StatCard label="Net yield (ann.)" value={pct(divYield)} sub="net ÷ average NAV" />
-          </div>
+        <>
+          <Box mb={2}>
+            <Metrics
+              items={[
+                { label: "Gross dividends", value: sgd(gross, 2) },
+                { label: "Withholding tax", value: sgd(tax, 2), note: gross ? `${pct(-tax / gross, 1)} of gross` : undefined },
+                { label: "Net dividends", value: sgd(gross + tax, 2), color: "success.main" },
+                { label: "Net yield, annualized", value: pct(divYield), note: "Net dividends over average NAV" },
+              ]}
+            />
+          </Box>
           <Panel title="By security (SGD)">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th className="num">Gross</th>
-                  <th className="num">Withholding</th>
-                  <th className="num">Net</th>
-                  <th className="num">WHT rate</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Symbol</TableCell>
+                  <TableCell align="right">Gross</TableCell>
+                  <TableCell align="right">Withholding</TableCell>
+                  <TableCell align="right">Net</TableCell>
+                  <TableCell align="right">Withholding rate</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
                 {divs.map((d) => (
-                  <tr key={d.symbol}>
-                    <td>{d.symbol}</td>
-                    <td className="num">{sgd(d.gross, 2)}</td>
-                    <td className="num">{sgd(d.tax, 2)}</td>
-                    <td className="num">{sgd(d.gross + d.tax, 2)}</td>
-                    <td className="num">{d.gross ? pct(-d.tax / d.gross, 0) : "—"}</td>
-                  </tr>
+                  <TableRow key={d.symbol}>
+                    <TableCell>{d.symbol}</TableCell>
+                    <TableCell align="right">{sgd(d.gross, 2)}</TableCell>
+                    <TableCell align="right">{sgd(d.tax, 2)}</TableCell>
+                    <TableCell align="right">{sgd(d.gross + d.tax, 2)}</TableCell>
+                    <TableCell align="right">{d.gross ? pct(-d.tax / d.gross, 0) : "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-            {unattributed && (
-              <p className="panel-foot">
-                Unattributed: cash rows ingested before ISIN→conid resolution. Re-ingest those
-                statements to assign them to a security.
-              </p>
-            )}
+              </TableBody>
+            </Table>
           </Panel>
-        </div>
+        </>
       )}
     </div>
   );

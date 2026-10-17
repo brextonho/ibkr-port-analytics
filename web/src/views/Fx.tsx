@@ -1,91 +1,91 @@
-import { useState } from "react";
+import { Box } from "@mui/material";
 import { Line } from "react-chartjs-2";
-import type { FxPoint, Performance, Period } from "../api/types";
+import { useApi } from "../api/client";
+import type { FxPoint, Performance } from "../api/types";
 import { lineDataset, lineOptions } from "../chartOptions";
-import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
+import { Metrics } from "../components/Metrics";
+import { EmptyState, LoadingOrError, Panel, ViewHeader } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { StatCard } from "../components/StatCard";
-import { pct } from "../format";
-import { useFetch } from "../hooks";
+import { pct, signedPct, toneColor } from "../format";
+import { usePeriod } from "../hooks";
 import { seriesColorMap, usePalette } from "../theme";
 
-const tone = (x: number | null | undefined) =>
-  x === null || x === undefined ? undefined : x < 0 ? "bad" : "good";
-
 export function Fx() {
-  const [period, setPeriod] = useState<Period>("all");
+  const [period] = usePeriod();
   const p = usePalette();
-  const perf = useFetch<Performance | null>(`/performance?period=${period}`);
-  const fx = useFetch<FxPoint[]>(`/fx?period=${period}`);
+  const perf = useApi<Performance | null>(`/performance?period=${period}`);
+  const fx = useApi<FxPoint[]>(`/fx?period=${period}`);
 
   const rows = perf.data?.series ?? [];
   const last = rows[rows.length - 1];
-
-  const dates = [...new Set((fx.data ?? []).map((r) => r.report_date))].sort();
-  const currencies = [...new Set((fx.data ?? []).map((r) => r.currency))].sort();
+  const fxRows = fx.data ?? [];
+  const dates = [...new Set(fxRows.map((r) => r.report_date))].sort();
+  const currencies = [...new Set(fxRows.map((r) => r.currency))].sort();
   const colors = seriesColorMap(currencies, p);
-  const byKey = new Map((fx.data ?? []).map((r) => [`${r.report_date}|${r.currency}`, r]));
+  const byKey = new Map(fxRows.map((r) => [`${r.report_date}|${r.currency}`, r.cum_contribution]));
 
   return (
     <div>
-      <div className="view-header">
-        <h1>FX attribution</h1>
-        <PeriodPicker value={period} onChange={setPeriod} />
-      </div>
-      <p className="view-note">
-        Your SGD return split into what the holdings did in their own currencies, and what
-        currency moves added or took away. Negative FX means SGD strengthened against what you
-        hold.
-      </p>
+      <ViewHeader
+        title="Currency effect"
+        note="Your SGD return, split into what holdings did in their own currencies and what exchange rates added or took away."
+      >
+        <PeriodPicker />
+      </ViewHeader>
 
-      {perf.loading && !perf.data ? (
-        <LoadingOrError loading={perf.loading} error={perf.error} />
+      {perf.isPending || perf.error ? (
+        <LoadingOrError loading={perf.isPending} error={perf.error} />
       ) : !last ? (
-        <EmptyState>No returns in this window — run ingestion or pick a longer period.</EmptyState>
+        <EmptyState>No returns in this period yet. Pick a longer period.</EmptyState>
       ) : (
         <>
-          <div className="stat-row">
-            <StatCard label="Return in SGD" value={pct(last.cum_twr)} tone={tone(last.cum_twr)} />
-            <StatCard label="Local-currency return" value={pct(last.cum_local)} tone={tone(last.cum_local)} />
-            <StatCard
-              label="FX effect"
-              value={pct(last.cum_fx)}
-              tone={tone(last.cum_fx)}
-              sub="(1 + SGD) = (1 + local) × (1 + FX)"
+          <Box mb={3} maxWidth={720}>
+            <Metrics
+              min={200}
+              items={[
+                { label: "Return in SGD", value: signedPct(last.cum_twr), color: toneColor(last.cum_twr) },
+                { label: "Return in local currencies", value: signedPct(last.cum_local), color: toneColor(last.cum_local) },
+                {
+                  label: "Exchange-rate effect",
+                  value: signedPct(last.cum_fx),
+                  color: toneColor(last.cum_fx),
+                  note: "Negative when SGD strengthened against what you hold",
+                },
+              ]}
             />
-          </div>
-          <Panel title="Cumulative return: SGD vs local vs FX" height={300}>
+          </Box>
+          <Panel title="Cumulative return" height={300}>
             <Line
               data={{
                 labels: rows.map((d) => d.report_date),
                 datasets: [
-                  lineDataset(p, 0, "SGD", rows.map((d) => d.cum_twr)),
-                  lineDataset(p, 1, "Local", rows.map((d) => d.cum_local)),
-                  lineDataset(p, 2, "FX", rows.map((d) => d.cum_fx)),
+                  lineDataset(p, 0, "In SGD", rows.map((d) => d.cum_twr)),
+                  lineDataset(p, 1, "In local currencies", rows.map((d) => d.cum_local)),
+                  lineDataset(p, 2, "Exchange-rate effect", rows.map((d) => d.cum_fx)),
                 ],
               }}
-              options={lineOptions(p, { yFormat: (v) => pct(v), legend: true })}
+              options={lineOptions(p, { yFormat: (v) => pct(v, 0), legend: true })}
             />
           </Panel>
         </>
       )}
 
-      {fx.loading && !fx.data ? (
-        <LoadingOrError loading={fx.loading} error={fx.error} />
+      {fx.isPending || fx.error ? (
+        <LoadingOrError loading={fx.isPending} error={fx.error} />
       ) : dates.length === 0 ? (
-        <EmptyState>No FX history in this window yet — it needs at least two days of rates.</EmptyState>
+        <EmptyState>No exchange-rate history in this period yet. It needs at least two days of rates.</EmptyState>
       ) : (
-        <Panel title="FX effect by currency (cumulative, approx.)" height={300}>
+        <Panel title="Exchange-rate effect by currency (cumulative, approximate)" height={280}>
           <Line
             data={{
               labels: dates,
               datasets: currencies.map((c) => ({
-                ...lineDataset(p, 0, c, dates.map((d) => byKey.get(`${d}|${c}`)?.cum_contribution ?? null)),
+                ...lineDataset(p, 0, c, dates.map((d) => byKey.get(`${d}|${c}`) ?? null)),
                 borderColor: colors.get(c),
                 backgroundColor: colors.get(c),
               })),
             }}
-            options={lineOptions(p, { yFormat: (v) => pct(v), legend: true })}
+            options={lineOptions(p, { yFormat: (v) => pct(v, 1), legend: true })}
           />
         </Panel>
       )}

@@ -42,7 +42,8 @@ class SeriesStats(BaseModel):
 
 
 class RelativeStats(BaseModel):
-    excess: float | None
+    excess: float | None  # cumulative, portfolio minus benchmark
+    weeks: int  # the rest use weekly returns (London vs New York closes)
     beta: float | None
     correlation: float | None
     tracking_error: float | None

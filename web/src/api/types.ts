@@ -36,7 +36,8 @@ export interface SeriesStats {
 }
 
 export interface RelativeStats {
-  excess: number | null;
+  excess: number | null; // cumulative, portfolio minus benchmark
+  weeks: number; // the rest use weekly returns (London vs New York closes)
   beta: number | null;
   correlation: number | null;
   tracking_error: number | null;

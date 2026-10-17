@@ -1,25 +1,23 @@
+import { ToggleButton, ToggleButtonGroup } from "@mui/material";
 import type { Period } from "../api/types";
+import { PERIODS, usePeriod } from "../hooks";
 
-const PERIODS: Period[] = ["1m", "3m", "6m", "ytd", "1y", "3y", "5y", "all"];
-
-export function PeriodPicker({
-  value,
-  onChange,
-}: {
-  value: Period;
-  onChange: (p: Period) => void;
-}) {
+/** The shared period: changing it here changes it on every tab. */
+export function PeriodPicker() {
+  const [period, setPeriod] = usePeriod();
   return (
-    <div className="period-picker" role="group" aria-label="Time period">
+    <ToggleButtonGroup
+      size="small"
+      exclusive
+      value={period}
+      onChange={(_, p: Period | null) => p && setPeriod(p)}
+      aria-label="Period"
+    >
       {PERIODS.map((p) => (
-        <button
-          key={p}
-          className={p === value ? "period active" : "period"}
-          onClick={() => onChange(p)}
-        >
-          {p.toUpperCase()}
-        </button>
+        <ToggleButton key={p} value={p}>
+          {p === "all" ? "All" : p.toUpperCase()}
+        </ToggleButton>
       ))}
-    </div>
+    </ToggleButtonGroup>
   );
 }

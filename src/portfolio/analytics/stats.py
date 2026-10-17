@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 FACTOR = 252
+WEEKS = 52
 
 
 def _num(x: Any) -> float | None:
@@ -69,11 +70,23 @@ def series_stats(r: pd.Series, *, rf_annual: float = 0.0) -> dict[str, Any]:
     }
 
 
+def weekly(r: pd.Series) -> pd.Series:
+    """Compound daily returns into Friday-ending weeks."""
+    return (1.0 + r).resample("W-FRI").prod() - 1.0
+
+
 def relative_stats(p: pd.Series, b: pd.Series) -> dict[str, Any]:
-    """Portfolio vs benchmark on days where both have a return."""
+    """Portfolio vs benchmark, on days where both have a return.
+
+    Excess is cumulative. Everything else uses weekly returns: the benchmark
+    closes in London hours before most holdings close in New York, so daily
+    pairs are out of sync and understate beta and correlation.
+    """
+    excess = _num((1.0 + p).prod() - (1.0 + b).prod())
+    p, b = weekly(p), weekly(b)
     n = len(p)
     active = p - b
-    te = float(active.std(ddof=1)) * math.sqrt(FACTOR) if n >= 2 else None
+    te = float(active.std(ddof=1)) * math.sqrt(WEEKS) if n >= 2 else None
 
     def capture(mask: pd.Series) -> float | None:
         # mean portfolio return on benchmark up (down) days ÷ benchmark mean
@@ -82,11 +95,12 @@ def relative_stats(p: pd.Series, b: pd.Series) -> dict[str, Any]:
         return _ratio(float(p[mask].mean()), float(b[mask].mean()))
 
     return {
-        "excess": _num((1.0 + p).prod() - (1.0 + b).prod()),
+        "excess": excess,
+        "weeks": n,
         "beta": _ratio(float(p.cov(b)), float(b.var())) if n >= 2 else None,
         "correlation": _num(p.corr(b)) if n >= 2 else None,
         "tracking_error": _num(te),
-        "info_ratio": _ratio(float(active.mean()) * FACTOR, te) if n >= 2 else None,
+        "info_ratio": _ratio(float(active.mean()) * WEEKS, te) if n >= 2 else None,
         "up_capture": capture(b > 0),
         "down_capture": capture(b < 0),
     }

@@ -20,9 +20,9 @@ export function lineOptions(
         labels: { color: p.ink2, boxWidth: 12, boxHeight: 12, usePointStyle: true },
       },
       tooltip: {
-        backgroundColor: p.mode === "light" ? "#0b0b0b" : "#2c2c2a",
+        backgroundColor: p.mode === "light" ? p.ink : "#24323a",
         titleColor: "#ffffff",
-        bodyColor: "#e1e0d9",
+        bodyColor: "#e4eaec",
         callbacks: yFormat
           ? {
               label: (ctx: { dataset: { label?: string }; parsed: { y: number | null } }) =>

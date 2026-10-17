@@ -1,69 +1,61 @@
+import { Box, Table, TableBody, TableCell, TableHead, TableRow, Tooltip } from "@mui/material";
+import { useApi } from "../api/client";
 import type { IngestRunRow } from "../api/types";
-import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
-import { useFetch } from "../hooks";
+import { EmptyState, LoadingOrError, Panel, ViewHeader } from "../components/Panel";
 
-function totalRows(run: IngestRunRow): number {
-  return Object.values(run.rows_upserted ?? {}).reduce((a, b) => a + b, 0);
-}
+const totalRows = (run: IngestRunRow) => Object.values(run.rows_upserted ?? {}).reduce((a, b) => a + b, 0);
 
 export function Ops() {
-  const { data, error, loading } = useFetch<IngestRunRow[]>("/ops/runs?n=20");
-
-  if (loading || error) return <LoadingOrError loading={loading} error={error} />;
-  if (!data || data.length === 0)
-    return <EmptyState>No ingestion runs recorded yet.</EmptyState>;
+  const { data, error, isPending } = useApi<IngestRunRow[]>("/ops/runs?n=20");
+  if (isPending || error) return <LoadingOrError loading={isPending} error={error} />;
+  if (data.length === 0) return <EmptyState>No ingests yet. Run `uv run portfolio ingest` to load your data.</EmptyState>;
 
   const latestSuccess = data.find((r) => r.status === "success");
   return (
     <div>
-      <div className="view-header">
-        <h1>Ops</h1>
-        <span className="view-note">
-          watermark: {latestSuccess?.watermark_after ?? "none"}
-        </span>
-      </div>
-      <Panel title="Recent ingestion runs">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Status</th>
-              <th>Started (UTC)</th>
-              <th>Window</th>
-              <th>Watermark</th>
-              <th className="num">Rows</th>
-              <th className="num">Duration</th>
-              <th>Retries</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((r) => (
-              <tr key={r.id}>
-                <td>{r.id}</td>
-                <td>
-                  <span
-                    className={`status-dot ${r.status === "success" ? "status-good" : "status-bad"}`}
-                  />
-                  {r.status}
-                </td>
-                <td>{r.started_at?.replace("T", " ").slice(0, 19) ?? "—"}</td>
-                <td>
-                  {r.requested_from} → {r.requested_to}
-                </td>
-                <td>
-                  {r.watermark_before ?? "∅"} → {r.watermark_after ?? "∅"}
-                </td>
-                <td className="num">{totalRows(r)}</td>
-                <td className="num">
-                  {r.duration_seconds === null ? "—" : `${r.duration_seconds.toFixed(1)}s`}
-                </td>
-                <td>{r.flex_retries?.length ? r.flex_retries.length : "—"}</td>
-                <td className="error-cell">{r.error_message ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <ViewHeader
+        title="Ops"
+        note={`Data loaded up to ${latestSuccess?.watermark_after ?? "nothing yet"}. The next live pull starts 14 days before that.`}
+      />
+      <Panel title="Recent ingests">
+        <Box sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Started (UTC)</TableCell>
+                <TableCell>Result</TableCell>
+                <TableCell>Statement dates</TableCell>
+                <TableCell>Data up to</TableCell>
+                <TableCell align="right">Rows</TableCell>
+                <TableCell align="right">Took</TableCell>
+                <TableCell align="right">Retries</TableCell>
+                <TableCell>Error</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{r.started_at?.replace("T", " ").slice(0, 16) ?? "—"}</TableCell>
+                  <TableCell sx={{ color: r.status === "success" ? "success.main" : "error.main" }}>
+                    {r.status === "success" ? "Succeeded" : "Failed"}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {r.requested_from ? `${r.requested_from} to ${r.requested_to}` : "—"}
+                  </TableCell>
+                  <TableCell>{r.watermark_after ?? "unchanged"}</TableCell>
+                  <TableCell align="right">
+                    <Tooltip title={Object.entries(r.rows_upserted ?? {}).map(([t, n]) => `${t}: ${n}`).join(", ")}>
+                      <span>{totalRows(r).toLocaleString()}</span>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="right">{r.duration_seconds === null ? "—" : `${r.duration_seconds.toFixed(1)}s`}</TableCell>
+                  <TableCell align="right">{r.flex_retries?.length || "—"}</TableCell>
+                  <TableCell sx={{ color: "error.main", maxWidth: 420 }}>{r.error_message ?? ""}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
       </Panel>
     </div>
   );
