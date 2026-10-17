@@ -16,14 +16,14 @@ def fixture_xml_path() -> Path:
 
 @pytest.fixture(scope="session")
 def stmt(fixture_xml_path):
-    from ingestion.flex.parse import parse_statement
+    from portfolio.flex.parse import parse_statement
 
     return parse_statement(fixture_xml_path)
 
 
 @pytest.fixture(scope="session")
 def frames(stmt):
-    from ingestion.flex.frames import to_frames
+    from portfolio.flex.frames import to_frames
 
     return to_frames(stmt)
 
@@ -35,7 +35,7 @@ def raw_frames(frames):
 
     import pandas as pd
 
-    from ingestion.transform import transform_all
+    from portfolio.transform import transform_all
 
     rows = transform_all(
         frames,
@@ -43,14 +43,13 @@ def raw_frames(frames):
         base_currency="SGD",
     )
     out = {name: pd.DataFrame(table_rows) for name, table_rows in rows.items()}
-    out["security_tags"] = pd.DataFrame()
     out["benchmark_prices"] = pd.DataFrame()
     return out
 
 
 @pytest.fixture()
 def engine():
-    from ingestion.load.models import Base
+    from portfolio.load.models import Base
 
     # StaticPool: one shared connection so the in-memory DB survives reconnects
     eng = create_engine(

@@ -1,52 +1,11 @@
-# Copy to config/config.yaml (gitignored) and fill in via environment variables.
-# Secrets are referenced as ${VAR} and injected at runtime — never committed.
+# Copy to config/config.yaml (gitignored) to change any of these. Every key is
+# optional; the values shown are the defaults. Secrets go in .env, not here.
 
-ingestion:
-  cron: "0 21 * * FRI"          # Fri 21:00 UTC ≈ after US close
-                                # daily later: "0 21 * * MON-FRI"
-  lookback_days: 14             # overlap buffer; self-heals missed runs
-  max_lookback_days: 365        # Flex hard ceiling
-  retry:
-    attempts: 5
-    backoff_seconds: 30         # exponential; for codes 1001/1004-1009/1018/1019/1021
-    fatal_codes: [1003, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1020]
-
-flex:
-  base_url: "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService"
-  query_id: ${FLEX_QUERY_ID}
-  token: ${FLEX_TOKEN}          # secret, injected at runtime
-  version: 3
-  user_agent: "ibkr-portfolio/0.1"   # header required, value arbitrary
-
-database:
-  url: ${DATABASE_URL}          # postgresql+psycopg://user:pass@postgres:5432/portfolio
-
-portfolio:
-  account_id: ${IBKR_ACCOUNT_ID}
-  base_currency: SGD
-  benchmark:
-    ticker: "VWRA.L"
-    source: yfinance
-    convert_to_base: true       # §7.7 — non-negotiable for honest comparison
-
-metrics:
-  grain: daily                  # NAV grain — INDEPENDENT of ingestion.cron
-  annualization_factor: 252
-  rolling_window_days: 63
-  risk_free_rate: 0.0
-
-notifications:
-  enabled: false                # flip on once SMTP creds are in .env
-  backend: none                 # smtp | none
-  on_success: true
-  on_failure: true
-  to: "you@example.com"
-  smtp:
-    host: "smtp.gmail.com"
-    port: 587
-    username: ${SMTP_USER}
-    password: ${SMTP_PASSWORD}  # Gmail app password
-
-enrichment:
-  security_tags_file: "config/security_tags.example.yaml"
-  position_notes_file: "config/position_notes.example.yaml"
+database: portfolio.db      # SQLite file (or any SQLAlchemy URL)
+base_currency: SGD
+benchmark: VWRA.L           # Yahoo Finance ticker; converted to base currency
+risk_free_rate: 0.0         # annual, for Sharpe and Sortino
+lookback_days: 14           # days re-fetched before the last pull; heals missed runs
+retry:
+  attempts: 5               # when IB says the statement isn't ready yet
+  backoff_seconds: 30       # doubles each attempt

@@ -1,43 +1,64 @@
-// Hand-mirrored from api/src/api/schemas.py (PRD §11.1).
-// OpenAPI → TS codegen is a deferred item (§13).
+// Hand-mirrored from src/portfolio/api/schemas.py.
 
 export type Period = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "5y" | "all";
-export type Dimension = "asset_class" | "geography" | "currency" | "sector" | "theme";
+export type Dimension = "asset_class" | "currency" | "geography" | "sleeve" | "theme" | "sector";
 
-export interface NavPoint {
+export interface PerformancePoint {
   report_date: string;
   nav_sgd: number | null;
   external_flow_sgd: number | null;
-  benchmark_cum: number | null;
-}
-
-export interface ReturnPoint {
-  report_date: string;
-  r_period: number | null;
-  r_local: number | null;
-  r_fx: number | null;
+  // cumulative series start at 0 on the period's first date
   cum_twr: number | null;
-  benchmark_r: number | null;
   benchmark_cum: number | null;
+  drawdown: number | null;
+  cum_local: number | null;
+  cum_fx: number | null;
 }
 
-export interface MetricsSummary {
-  report_date: string;
-  twr_cum: number | null;
-  twr_annualized: number | null;
-  vol_rolling: number | null;
+export interface Day {
+  date: string;
+  r: number | null;
+}
+
+export interface SeriesStats {
+  total_return: number | null;
+  annualized: number | null; // null when the period is shorter than 252 days
+  volatility: number | null;
   sharpe: number | null;
   sortino: number | null;
   max_drawdown: number | null;
-  drawdown_current: number | null;
-  benchmark_twr_cum: number | null;
-  excess_return: number | null;
+  current_drawdown: number | null;
+  calmar: number | null;
+  best_day: Day | null;
+  worst_day: Day | null;
+  positive_days: number | null;
+  var95: number | null;
 }
 
-export interface DrawdownPoint {
+export interface RelativeStats {
+  excess: number | null;
+  beta: number | null;
+  correlation: number | null;
+  tracking_error: number | null;
+  info_ratio: number | null;
+  up_capture: number | null;
+  down_capture: number | null;
+}
+
+export interface Performance {
+  start: string;
+  end: string;
+  days: number;
+  series: PerformancePoint[];
+  portfolio: SeriesStats;
+  benchmark: SeriesStats | null;
+  relative: RelativeStats | null;
+}
+
+export interface FxPoint {
   report_date: string;
-  drawdown_current: number | null;
-  max_drawdown: number | null;
+  currency: string;
+  cum_contribution: number;
 }
 
 export interface ExposureSlice {
@@ -45,15 +66,7 @@ export interface ExposureSlice {
   dimension: Dimension;
   bucket: string;
   value_sgd: number | null;
-  pct_of_nav: number | null;
-}
-
-export interface FxAttributionRow {
-  report_date: string;
-  currency: string;
-  weight: number | null;
-  fx_return: number | null;
-  contribution_bps: number | null;
+  pct_of_nav: number | null; // percent units
 }
 
 export interface PositionRow {
@@ -66,25 +79,35 @@ export interface PositionRow {
   currency: string | null;
   quantity: number | null;
   mark_price: number | null; // position currency
+  avg_cost_local: number | null; // position currency, comparable to mark_price
   fx_rate_to_base: number | null;
-  // IB reports cost basis and unrealized P&L in base currency (SGD)
-  cost_basis_price: number | null;
-  cost_basis_money: number | null;
+  cost_basis_money: number | null; // SGD
   position_value_sgd: number | null;
   percent_of_nav: number | null;
-  unrealized_pnl: number | null;
+  unrealized_pnl: number | null; // SGD
   unrealized_capital_gains_pnl: number | null; // price part of unrealized_pnl
   unrealized_fx_pnl: number | null; // FX part
-  avg_cost_local: number | null; // position currency, comparable to mark_price
   issuer_country_code: string | null;
-  geography: string | null;
+  sleeve: string | null;
   theme: string | null;
+  sector: string | null;
+  geography: string | null;
   thesis: string | null;
-  catalyst_date: string | null;
   target_price: number | null;
-  base_price: number | null;
-  bear_price: number | null;
   sellable_date: string | null;
+}
+
+export interface ClosedTrade {
+  trade_id: string;
+  conid: string | null;
+  symbol: string | null;
+  open_date: string | null;
+  close_date: string | null;
+  days_held: number | null;
+  quantity: number | null;
+  realized_pnl_sgd: number | null;
+  return_pct: number | null; // percent units
+  note: string | null;
 }
 
 export interface PnlPoint {
@@ -111,31 +134,6 @@ export interface DividendRow {
   amount_sgd: number | null;
 }
 
-export interface JournalRow {
-  trade_id: string;
-  conid: string | null;
-  symbol: string | null;
-  open_date: string | null;
-  close_date: string | null;
-  days_held: number | null;
-  quantity: number | null;
-  realized_pnl_sgd: number | null;
-  return_pct: number | null;
-  is_winner: boolean | null;
-  process_grade: string | null;
-}
-
-export interface TradeStats {
-  as_of_date: string;
-  n_trades: number | null;
-  hit_rate: number | null;
-  slugging_ratio: number | null;
-  avg_win_sgd: number | null;
-  avg_loss_sgd: number | null;
-  avg_hold_winners: number | null;
-  avg_hold_losers: number | null;
-}
-
 export interface IngestRunRow {
   id: number;
   started_at: string | null;
@@ -150,5 +148,4 @@ export interface IngestRunRow {
   error_code: string | null;
   error_message: string | null;
   duration_seconds: number | null;
-  notified: boolean | null;
 }

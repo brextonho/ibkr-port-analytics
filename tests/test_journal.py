@@ -1,4 +1,4 @@
-"""Trade journal + stats (PRD §7.9) on synthetic closed trades."""
+"""Closed trades built from Closed Lots."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -6,7 +6,7 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from ingestion.analytics.journal import build_trade_journal, build_trade_stats
+from portfolio.analytics.journal import build_trade_journal
 
 # Closed Lots rows as IB sends them with Base Currency P&L: cost and realized
 # P&L already in SGD.
@@ -45,51 +45,8 @@ def test_winner_economics(journal):
     assert t1["return_pct"] == pytest.approx(13.5)  # 135 / 1000 cost
     assert t1["open_date"] == date(2026, 6, 10)  # earliest lot
     assert t1["days_held"] == 18  # (4×30 + 6×10) / 10, quantity-weighted
-    assert bool(t1["is_winner"]) is True
     assert t1["symbol"] == "AAA"
 
 
-def test_stats_measure_the_retail_pattern(journal):
-    stats = build_trade_stats(journal, as_of=date(2026, 7, 15))
-    assert stats["n_trades"] == 2
-    assert stats["hit_rate"] == pytest.approx(0.5)
-    assert stats["avg_win_sgd"] == pytest.approx(135.0)
-    assert stats["avg_loss_sgd"] == pytest.approx(-50.0)
-    assert stats["slugging_ratio"] == pytest.approx(2.7)
-    assert stats["avg_hold_winners"] == pytest.approx(18.0)
-    assert stats["avg_hold_losers"] == pytest.approx(2.0)
-
-
-def test_empty_trades_yield_no_journal_and_no_stats():
-    empty = build_trade_journal(pd.DataFrame(), SECURITIES)
-    assert empty.empty
-    assert build_trade_stats(empty, as_of=date(2026, 7, 15)) is None
-
-
-def test_missing_open_date_survives_the_db_write(engine):
-    # Real closed trades can arrive with no openDateTime (the lot was opened
-    # before the window), giving NaT/NaN in open_date and days_held. Both must
-    # reach the DB as NULL — NaT is not a Timestamp and the date binder reads
-    # NaT.year as NaN.
-    import pandas as pd
-
-    from ingestion.analytics.marts import _rows
-    from ingestion.load.models import Base
-    from ingestion.load.upsert import upsert_rows
-
-    df = pd.DataFrame([{
-        "trade_id": "t1",
-        "conid": "c1",
-        "symbol": "AAA",
-        "open_date": pd.NaT,
-        "close_date": date(2026, 7, 15),
-        "days_held": float("nan"),
-        "quantity": -30.0,
-        "realized_pnl_sgd": 12.5,
-        "return_pct": 1.5,
-        "is_winner": True,
-    }])
-    rows = _rows(df)
-    assert rows[0]["open_date"] is None and rows[0]["days_held"] is None
-    with engine.begin() as conn:
-        assert upsert_rows(conn, Base.metadata.tables["trade_journal"], rows) == 1
+def test_empty_lots_yield_no_journal():
+    assert build_trade_journal(pd.DataFrame(), SECURITIES).empty

@@ -1,9 +1,9 @@
-"""Watermark + overlap (PRD §5.2): cadence is config, missed runs self-heal."""
+"""Watermark + overlap: cadence is config, missed runs self-heal."""
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from ingestion.load.watermark import (
+from portfolio.load.watermark import (
     compute_window,
     current_watermark,
     last_available_date,
@@ -15,14 +15,14 @@ LAST_AVAILABLE = date(2026, 7, 16)  # IB has no statement for the in-progress da
 
 
 def test_first_run_backfills_the_full_ceiling():
-    fd, td = compute_window(None, today=TODAY, lookback_days=14, max_lookback_days=365)
+    fd, td = compute_window(None, today=TODAY, lookback_days=14)
     assert (td - fd).days == 365
     assert td == LAST_AVAILABLE
 
 
 def test_incremental_run_overlaps_the_watermark():
     fd, td = compute_window(
-        date(2026, 7, 10), today=TODAY, lookback_days=14, max_lookback_days=365
+        date(2026, 7, 10), today=TODAY, lookback_days=14
     )
     assert fd == date(2026, 6, 26)  # watermark − 14d: deliberate overlap
     assert td == LAST_AVAILABLE
@@ -32,14 +32,14 @@ def test_missed_run_is_covered_by_next_window():
     # Watermark stuck two weeks back (a failed Friday): the next run's window
     # still reaches it, so the gap backfills automatically.
     stale = date(2026, 7, 3)
-    fd, td = compute_window(stale, today=TODAY, lookback_days=14, max_lookback_days=365)
+    fd, td = compute_window(stale, today=TODAY, lookback_days=14)
     assert fd < stale
     assert (td - fd).days <= 365
 
 
 def test_window_never_exceeds_the_flex_ceiling():
     fd, td = compute_window(
-        date(2020, 1, 1), today=TODAY, lookback_days=14, max_lookback_days=365
+        date(2020, 1, 1), today=TODAY, lookback_days=14
     )
     assert (td - fd).days == 365
 
@@ -49,7 +49,7 @@ def test_window_never_reaches_today():
     # the current day is still in progress, so no statement exists for it.
     for watermark in (None, date(2026, 7, 16), date(2026, 7, 17), TODAY):
         _, td = compute_window(
-            watermark, today=TODAY, lookback_days=14, max_lookback_days=365
+            watermark, today=TODAY, lookback_days=14
         )
         assert td < TODAY
 
@@ -58,7 +58,7 @@ def test_window_is_never_inverted_when_the_watermark_is_current():
     # Watermark already at the last available date, lookback 0: fd must not
     # overshoot td.
     fd, td = compute_window(
-        LAST_AVAILABLE, today=TODAY, lookback_days=0, max_lookback_days=365
+        LAST_AVAILABLE, today=TODAY, lookback_days=0
     )
     assert fd <= td
 

@@ -1,4 +1,4 @@
-"""Idempotency (PRD §12): the same window twice produces identical rows."""
+"""Idempotency: the same window twice produces identical rows."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -6,9 +6,9 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
-from ingestion.load.models import Base, Exposure, NavHistory
-from ingestion.load.upsert import upsert_rows
-from ingestion.transform import RAW_TABLE_ORDER, transform_all
+from portfolio.load.models import Base, NavHistory
+from portfolio.load.upsert import upsert_rows
+from portfolio.transform import RAW_TABLE_ORDER, transform_all
 
 INGESTED_AT = datetime(2026, 7, 17, tzinfo=timezone.utc)
 
@@ -48,29 +48,6 @@ def test_conflicting_row_updates_in_place(engine):
     assert stored == [Decimal("101")]
 
 
-def test_upsert_on_unique_constraint_not_pk(engine):
-    """exposures has a surrogate id; its natural key is a UNIQUE constraint."""
-    natural_key = ["snapshot_date", "dimension", "bucket"]
-    row = dict(
-        snapshot_date=date(2026, 7, 15),
-        dimension="currency",
-        bucket="USD",
-        value_sgd=Decimal("50000"),
-        pct_of_nav=Decimal("42.5"),
-    )
-    with engine.begin() as conn:
-        upsert_rows(conn, Exposure.__table__, [row], conflict_cols=natural_key)
-        upsert_rows(
-            conn,
-            Exposure.__table__,
-            [dict(row, value_sgd=Decimal("51000"))],
-            conflict_cols=natural_key,
-        )
-    with engine.connect() as conn:
-        stored = conn.execute(select(Exposure.value_sgd)).scalars().all()
-    assert stored == [Decimal("51000")]
-
-
 def test_empty_rows_are_a_noop(engine):
     with engine.begin() as conn:
         assert upsert_rows(conn, NavHistory.__table__, []) == 0
@@ -79,8 +56,8 @@ def test_empty_rows_are_a_noop(engine):
 def test_rows_repeated_across_day_segments_collapse_last_wins(engine):
     # A day-segmented pull repeats SecuritiesInfo once per statement; a single
     # INSERT ... ON CONFLICT may not touch the same row twice.
-    from ingestion.load.models import Base
-    from ingestion.load.upsert import upsert_rows
+    from portfolio.load.models import Base
+    from portfolio.load.upsert import upsert_rows
 
     table = Base.metadata.tables["securities"]
     rows = [
@@ -98,7 +75,7 @@ def test_rows_repeated_across_day_segments_collapse_last_wins(engine):
 def test_large_batches_are_chunked_under_the_bind_param_ceiling(engine):
     # A 365-day day-segmented backfill writes thousands of position rows in
     # one call; a single INSERT would exceed the driver's parameter limit.
-    from ingestion.load.upsert import upsert_rows
+    from portfolio.load.upsert import upsert_rows
 
     table = Base.metadata.tables["positions"]
     rows = [

@@ -1,77 +1,30 @@
 import { useState } from "react";
-import { Bar } from "react-chartjs-2";
-import type { FxAttributionRow, Period } from "../api/types";
+import { Line } from "react-chartjs-2";
+import type { FxPoint, Performance, Period } from "../api/types";
+import { lineDataset, lineOptions } from "../chartOptions";
 import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
+import { StatCard } from "../components/StatCard";
+import { pct } from "../format";
 import { useFetch } from "../hooks";
 import { seriesColorMap, usePalette } from "../theme";
+
+const tone = (x: number | null | undefined) =>
+  x === null || x === undefined ? undefined : x < 0 ? "bad" : "good";
 
 export function Fx() {
   const [period, setPeriod] = useState<Period>("all");
   const p = usePalette();
-  const { data, error, loading } = useFetch<FxAttributionRow[]>(
-    `/attribution/fx?period=${period}`,
-  );
+  const perf = useFetch<Performance | null>(`/performance?period=${period}`);
+  const fx = useFetch<FxPoint[]>(`/fx?period=${period}`);
 
-  let body;
-  if (loading || error) {
-    body = <LoadingOrError loading={loading} error={error} />;
-  } else if (!data || data.length === 0) {
-    body = (
-      <EmptyState>
-        No FX attribution yet — it needs at least two days of FX rates in the
-        warehouse, so it fills in from the second ingested day onward.
-      </EmptyState>
-    );
-  } else {
-    const dates = [...new Set(data.map((r) => r.report_date))].sort();
-    const currencies = [...new Set(data.map((r) => r.currency))].sort();
-    const colors = seriesColorMap(currencies, p);
-    const byKey = new Map(data.map((r) => [`${r.report_date}|${r.currency}`, r]));
+  const rows = perf.data?.series ?? [];
+  const last = rows[rows.length - 1];
 
-    body = (
-      <Panel title="Daily FX contribution by currency (bps of NAV)" height={340}>
-        <Bar
-          data={{
-            labels: dates,
-            datasets: currencies.map((c) => ({
-              label: c,
-              data: dates.map(
-                (d) => byKey.get(`${d}|${c}`)?.contribution_bps ?? null,
-              ),
-              backgroundColor: colors.get(c),
-              stack: "fx",
-              // 2px surface gap between stacked segments (mark spec)
-              borderColor: p.surface,
-              borderWidth: { top: 1, bottom: 1, left: 0, right: 0 },
-            })),
-          }}
-          options={{
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: "index", intersect: false },
-            plugins: {
-              legend: { labels: { color: p.ink2, boxWidth: 12 } },
-            },
-            scales: {
-              x: {
-                stacked: true,
-                ticks: { color: p.muted, maxTicksLimit: 10, maxRotation: 0 },
-                grid: { display: false },
-                border: { color: p.axis },
-              },
-              y: {
-                stacked: true,
-                ticks: { color: p.muted, callback: (v) => `${v} bp` },
-                grid: { color: p.grid },
-                border: { display: false },
-              },
-            },
-          }}
-        />
-      </Panel>
-    );
-  }
+  const dates = [...new Set((fx.data ?? []).map((r) => r.report_date))].sort();
+  const currencies = [...new Set((fx.data ?? []).map((r) => r.currency))].sort();
+  const colors = seriesColorMap(currencies, p);
+  const byKey = new Map((fx.data ?? []).map((r) => [`${r.report_date}|${r.currency}`, r]));
 
   return (
     <div>
@@ -80,10 +33,62 @@ export function Fx() {
         <PeriodPicker value={period} onChange={setPeriod} />
       </div>
       <p className="view-note">
-        The SGD drag, bottom-up: previous-day currency weights × daily FX moves
-        (PRD §7.6). Negative bars mean SGD strength cost the portfolio that day.
+        Your SGD return split into what the holdings did in their own currencies, and what
+        currency moves added or took away. Negative FX means SGD strengthened against what you
+        hold.
       </p>
-      {body}
+
+      {perf.loading && !perf.data ? (
+        <LoadingOrError loading={perf.loading} error={perf.error} />
+      ) : !last ? (
+        <EmptyState>No returns in this window — run ingestion or pick a longer period.</EmptyState>
+      ) : (
+        <>
+          <div className="stat-row">
+            <StatCard label="Return in SGD" value={pct(last.cum_twr)} tone={tone(last.cum_twr)} />
+            <StatCard label="Local-currency return" value={pct(last.cum_local)} tone={tone(last.cum_local)} />
+            <StatCard
+              label="FX effect"
+              value={pct(last.cum_fx)}
+              tone={tone(last.cum_fx)}
+              sub="(1 + SGD) = (1 + local) × (1 + FX)"
+            />
+          </div>
+          <Panel title="Cumulative return: SGD vs local vs FX" height={300}>
+            <Line
+              data={{
+                labels: rows.map((d) => d.report_date),
+                datasets: [
+                  lineDataset(p, 0, "SGD", rows.map((d) => d.cum_twr)),
+                  lineDataset(p, 1, "Local", rows.map((d) => d.cum_local)),
+                  lineDataset(p, 2, "FX", rows.map((d) => d.cum_fx)),
+                ],
+              }}
+              options={lineOptions(p, { yFormat: (v) => pct(v), legend: true })}
+            />
+          </Panel>
+        </>
+      )}
+
+      {fx.loading && !fx.data ? (
+        <LoadingOrError loading={fx.loading} error={fx.error} />
+      ) : dates.length === 0 ? (
+        <EmptyState>No FX history in this window yet — it needs at least two days of rates.</EmptyState>
+      ) : (
+        <Panel title="FX effect by currency (cumulative, approx.)" height={300}>
+          <Line
+            data={{
+              labels: dates,
+              datasets: currencies.map((c) => ({
+                ...lineDataset(p, 0, c, dates.map((d) => byKey.get(`${d}|${c}`)?.cum_contribution ?? null)),
+                borderColor: colors.get(c),
+                backgroundColor: colors.get(c),
+              })),
+            }}
+            options={lineOptions(p, { yFormat: (v) => pct(v), legend: true })}
+          />
+        </Panel>
+      )}
     </div>
   );
 }

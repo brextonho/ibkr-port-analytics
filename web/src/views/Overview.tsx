@@ -1,12 +1,5 @@
-import { useMemo, useState } from "react";
-import type {
-  DrawdownPoint,
-  NavPoint,
-  Period,
-  PnlPoint,
-  PositionRow,
-  ReturnPoint,
-} from "../api/types";
+import { useState } from "react";
+import type { Performance, PerformancePoint, Period, PnlPoint, PositionRow } from "../api/types";
 import { lineDataset, lineOptions } from "../chartOptions";
 import { MeasurableLine, type ReadoutItem } from "../components/MeasurableLine";
 import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
@@ -15,7 +8,6 @@ import { StatCard } from "../components/StatCard";
 import { pct, sgd } from "../format";
 import { useFetch } from "../hooks";
 import { usePalette } from "../theme";
-import { computeWindowStats } from "../windowStats";
 
 const tone = (x: number | null): "good" | "bad" | undefined =>
   x === null ? undefined : x < 0 ? "bad" : "good";
@@ -29,7 +21,7 @@ function spanReturn(c0: number | null, c1: number | null): number | null {
   return c0 === null || c1 === null ? null : (1 + c1) / (1 + c0) - 1;
 }
 
-function describeNav(rows: NavPoint[], s: number, e: number): ReadoutItem[] {
+function describeNav(rows: PerformancePoint[], s: number, e: number): ReadoutItem[] {
   const a = rows[s].nav_sgd;
   const b = rows[e].nav_sgd;
   if (a === null || b === null) return [{ label: "Change", value: "—" }];
@@ -46,7 +38,7 @@ function describeNav(rows: NavPoint[], s: number, e: number): ReadoutItem[] {
   return items;
 }
 
-function describeReturns(rows: ReturnPoint[], s: number, e: number): ReadoutItem[] {
+function describeReturns(rows: PerformancePoint[], s: number, e: number): ReadoutItem[] {
   const port = spanReturn(rows[s].cum_twr, rows[e].cum_twr);
   const bench = spanReturn(rows[s].benchmark_cum, rows[e].benchmark_cum);
   const items: ReadoutItem[] = [
@@ -60,15 +52,15 @@ function describeReturns(rows: ReturnPoint[], s: number, e: number): ReadoutItem
   return items;
 }
 
-function describeDrawdown(rows: DrawdownPoint[], s: number, e: number): ReadoutItem[] {
+function describeDrawdown(rows: PerformancePoint[], s: number, e: number): ReadoutItem[] {
   const span = rows
     .slice(s, e + 1)
-    .map((r) => r.drawdown_current)
+    .map((r) => r.drawdown)
     .filter((v): v is number => v !== null);
   const deepest = span.length > 0 ? Math.min(...span) : null;
   return [
-    { label: "From", value: pct(rows[s].drawdown_current) },
-    { label: "To", value: pct(rows[e].drawdown_current) },
+    { label: "From", value: pct(rows[s].drawdown) },
+    { label: "To", value: pct(rows[e].drawdown) },
     { label: "Deepest", value: pct(deepest), tone: deepest !== null && deepest < 0 ? "bad" : undefined },
   ];
 }
@@ -78,13 +70,10 @@ export function Overview() {
   const p = usePalette();
   const pnl = useFetch<PnlPoint[]>(`/pnl?period=${period}`);
   const positions = useFetch<PositionRow[]>("/positions");
-  const nav = useFetch<NavPoint[]>(`/nav?period=${period}`);
-  const returns = useFetch<ReturnPoint[]>(`/returns?period=${period}`);
-  const drawdown = useFetch<DrawdownPoint[]>(`/drawdown?period=${period}`);
-
-  const w = useMemo(() => (returns.data ? computeWindowStats(returns.data) : null), [returns.data]);
+  const perf = useFetch<Performance | null>(`/performance?period=${period}`);
+  const rows = perf.data?.series ?? [];
   // Every period ends at the latest report date, so the last point is current.
-  const latestNav = [...(nav.data ?? [])].reverse().find((d) => d.nav_sgd !== null);
+  const latestNav = [...rows].reverse().find((d) => d.nav_sgd !== null);
   const latestCash = [...(pnl.data ?? [])].reverse().find((d) => d.cash_sgd !== null);
   const span = period === "all" ? "since inception" : `over ${period.toUpperCase()}`;
 
@@ -93,7 +82,8 @@ export function Overview() {
   const unrealizedChange = pnl.data ? sum(pnlRows.map((d) => d.change_in_unrealized)) : null;
   const unrealized = positions.data ? sum(positions.data.map((r) => r.unrealized_pnl)) : null;
   const costBasis = positions.data ? sum(positions.data.map((r) => r.cost_basis_money)) : 0;
-  const stale = returns.loading || nav.loading || pnl.loading;
+  const stale = perf.loading || pnl.loading;
+  const w = perf.data;
 
   return (
     <div>
@@ -102,8 +92,8 @@ export function Overview() {
         <PeriodPicker value={period} onChange={setPeriod} />
       </div>
 
-      {!returns.data ? (
-        <LoadingOrError loading={returns.loading} error={returns.error} />
+      {perf.loading && !perf.data ? (
+        <LoadingOrError loading={perf.loading} error={perf.error} />
       ) : !w ? (
         <EmptyState>No returns in this window — run ingestion or pick a longer period.</EmptyState>
       ) : (
@@ -115,8 +105,8 @@ export function Overview() {
           />
           <StatCard
             label="TWR"
-            value={pct(w.portfolio.totalReturn)}
-            tone={tone(w.portfolio.totalReturn)}
+            value={pct(w.portfolio.total_return)}
+            tone={tone(w.portfolio.total_return)}
             sub={span}
           />
           <StatCard
@@ -164,64 +154,64 @@ export function Overview() {
         </div>
       )}
 
-      {nav.data && nav.data.length > 0 ? (
+      {rows.length > 0 ? (
         <MeasurableLine
           title="NAV (SGD)"
           height={280}
           palette={p}
           resetKey={period}
-          labels={nav.data.map((d) => d.report_date)}
-          datasets={[lineDataset(p, 0, "NAV", nav.data.map((d) => d.nav_sgd))]}
+          labels={rows.map((d) => d.report_date)}
+          datasets={[lineDataset(p, 0, "NAV", rows.map((d) => d.nav_sgd))]}
           options={lineOptions(p, { yFormat: (v) => sgd(v) })}
-          describe={(s, e) => describeNav(nav.data!, s, e)}
+          describe={(s, e) => describeNav(rows, s, e)}
         />
       ) : (
         <Panel title="NAV (SGD)" height={280}>
-          <LoadingOrError loading={nav.loading} error={nav.error} />
+          <LoadingOrError loading={perf.loading} error={perf.error} />
         </Panel>
       )}
 
-      {returns.data && returns.data.length > 0 ? (
+      {rows.length > 0 ? (
         <MeasurableLine
           title="Cumulative TWR vs benchmark"
           height={280}
           palette={p}
           resetKey={period}
-          labels={returns.data.map((d) => d.report_date)}
+          labels={rows.map((d) => d.report_date)}
           datasets={[
-            lineDataset(p, 0, "Portfolio", returns.data.map((d) => d.cum_twr)),
-            lineDataset(p, 1, "VWRA (SGD)", returns.data.map((d) => d.benchmark_cum)),
+            lineDataset(p, 0, "Portfolio", rows.map((d) => d.cum_twr)),
+            lineDataset(p, 1, "VWRA (SGD)", rows.map((d) => d.benchmark_cum)),
           ]}
           options={lineOptions(p, { yFormat: (v) => pct(v), legend: true })}
-          describe={(s, e) => describeReturns(returns.data!, s, e)}
+          describe={(s, e) => describeReturns(rows, s, e)}
         />
       ) : (
         <Panel title="Cumulative TWR vs benchmark" height={280}>
-          <LoadingOrError loading={returns.loading} error={returns.error} />
+          <LoadingOrError loading={perf.loading} error={perf.error} />
         </Panel>
       )}
 
-      {drawdown.data && drawdown.data.length > 0 ? (
+      {rows.length > 0 ? (
         <MeasurableLine
           title="Drawdown"
           height={200}
           palette={p}
           resetKey={period}
-          labels={drawdown.data.map((d) => d.report_date)}
+          labels={rows.map((d) => d.report_date)}
           datasets={[
             {
-              ...lineDataset(p, 0, "Underwater", drawdown.data.map((d) => d.drawdown_current)),
+              ...lineDataset(p, 0, "Underwater", rows.map((d) => d.drawdown)),
               borderColor: p.drawdown,
               backgroundColor: `${p.drawdown}33`,
               fill: true,
             },
           ]}
           options={lineOptions(p, { yFormat: (v) => pct(v) })}
-          describe={(s, e) => describeDrawdown(drawdown.data!, s, e)}
+          describe={(s, e) => describeDrawdown(rows, s, e)}
         />
       ) : (
         <Panel title="Drawdown" height={200}>
-          <LoadingOrError loading={drawdown.loading} error={drawdown.error} />
+          <LoadingOrError loading={perf.loading} error={perf.error} />
         </Panel>
       )}
     </div>

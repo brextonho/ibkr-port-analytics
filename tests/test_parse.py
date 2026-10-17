@@ -12,7 +12,7 @@ def test_statement_identity(stmt):
 
 
 def test_section_row_counts(frames):
-    assert len(frames["nav"]) == 2  # prior-date anchor row + report day (§4.3)
+    assert len(frames["nav"]) == 2  # prior-date anchor row + report day
     assert len(frames["positions"]) == 7
     assert len(frames["securities"]) == 7
     assert len(frames["fx_rates"]) == 6
@@ -37,11 +37,11 @@ def test_change_in_nav_carries_the_twr_oracle(frames):
 
 def test_day_segmented_pull_parses_every_statement(tmp_path, fixture_xml_path):
     # Breakout by Day segments a multi-day window into one <FlexStatement>
-    # per day (PRD §4.1); the fixture is a one-day pull, so fabricate a
+    # per day; the fixture is a one-day pull, so fabricate a
     # second segment from it.
     import re
 
-    from ingestion.flex.parse import parse_statements
+    from portfolio.flex.parse import parse_statements
 
     xml = fixture_xml_path.read_text()
     one = re.search(r"<FlexStatement .*?</FlexStatement>", xml, re.S).group(0)
@@ -59,7 +59,7 @@ def test_day_segmented_pull_parses_every_statement(tmp_path, fixture_xml_path):
 
 
 def test_segments_merge_into_one_frame_per_section(stmt, frames):
-    from ingestion.flex.frames import to_frames
+    from portfolio.flex.frames import to_frames
 
     merged = to_frames([stmt, stmt])
     for name, frame in frames.items():
@@ -71,7 +71,7 @@ def test_not_ready_pnl_message_refuses_the_statement(tmp_path, fixture_xml_path)
     # so only in a <Message>; ingesting it would overwrite good data with 0s.
     import pytest
 
-    from ingestion.flex.parse import StatementNotReadyError, parse_statements
+    from portfolio.flex.parse import StatementNotReadyError, parse_statements
 
     xml = fixture_xml_path.read_text().replace(
         "<FlexStatements",
@@ -88,8 +88,8 @@ def test_not_ready_pnl_message_refuses_the_statement(tmp_path, fixture_xml_path)
 def test_closed_lots_split_out_and_tagged_with_closing_trade(tmp_path, fixture_xml_path):
     # IB leaves tradeID blank on <Lot> and lists lots right after the
     # execution that closed them.
-    from ingestion.flex.frames import to_frames
-    from ingestion.flex.parse import parse_statements
+    from portfolio.flex.frames import to_frames
+    from portfolio.flex.parse import parse_statements
 
     common = 'accountId="DEMO0001" currency="USD" fxRateToBase="1.3" conid="4391" symbol="AMD"'
     trades = (

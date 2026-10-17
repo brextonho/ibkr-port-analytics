@@ -7,7 +7,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from ingestion.analytics.twr import chain, ib_daily_flows, ib_daily_returns
+from portfolio.analytics.twr import chain, ib_daily_flows, ib_daily_returns
 
 DATES = pd.DatetimeIndex(["2026-01-01", "2026-01-02", "2026-01-05"])
 

@@ -29,9 +29,13 @@ web/dist/
 
 # data files
 data/
-config/position_notes.yaml
-config/security_tags.yaml
 
 # IDE
 .idea/
 .vscode/
+
+# app
+ingest.log
+*.db-wal
+*.db-shm
+.claude/

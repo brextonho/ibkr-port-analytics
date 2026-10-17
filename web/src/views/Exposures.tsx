@@ -4,7 +4,7 @@ import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
 import { pctPoints, sgd } from "../format";
 import { usePalette } from "../theme";
 
-const DIMENSIONS: Dimension[] = ["asset_class", "geography", "currency", "sector", "theme"];
+const DIMENSIONS: Dimension[] = ["asset_class", "currency", "geography", "sleeve", "theme", "sector"];
 
 /** Presentational: the parent owns `by` and the fetch so it can show the
  *  snapshot date in its own header. */
@@ -44,10 +44,7 @@ export function Exposures({
         <LoadingOrError loading={loading} error={error} />
       ) : data.length === 0 ? (
         <EmptyState>
-          No {by.replace("_", " ")} exposures yet
-          {by === "sector" || by === "theme"
-            ? " — this dimension is deferred until security_tags is populated."
-            : "."}
+          No {by.replace("_", " ")} exposures yet.
         </EmptyState>
       ) : (
         <div className="two-col">

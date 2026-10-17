@@ -1,4 +1,4 @@
-"""FX decomposition (PRD §7.5–7.6, §12): log additivity must be exact."""
+"""FX decomposition: log additivity must be exact."""
 from __future__ import annotations
 
 from datetime import date
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ingestion.analytics.fx import (
+from portfolio.analytics.fx import (
     currency_weights,
     daily_fx_attribution,
     fx_rate_levels,
@@ -27,7 +27,7 @@ def test_currency_weights_exclude_base_and_divide_by_nav():
     )
     nav_total = pd.Series([1000.0], index=pd.DatetimeIndex(["2026-01-01"]))
     w = currency_weights(positions, nav_total=nav_total, base_currency="SGD")
-    assert "SGD" not in w.columns  # X ≡ 1, drops out (§7.6)
+    assert "SGD" not in w.columns  # X ≡ 1, drops out
     assert w.iloc[0]["USD"] == pytest.approx(0.5)
     assert w.iloc[0]["JPY"] == pytest.approx(0.2)
 
@@ -51,7 +51,7 @@ def test_attribution_is_prev_weight_times_fx_return():
 
 
 def test_log_additivity_is_exact():
-    """ln(1+r_sgd) = ln(1+r_local) + ln(1+r_fx) with no residual (§7.5)."""
+    """ln(1+r_sgd) = ln(1+r_local) + ln(1+r_fx) with no residual."""
     r_sgd = pd.Series([np.nan, 0.011, -0.023], index=DATES)
     r_fx = pd.Series([0.0, -0.004, 0.007], index=DATES)
     r_local = r_local_from(r_sgd, r_fx)

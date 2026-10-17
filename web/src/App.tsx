@@ -12,7 +12,7 @@ const VIEWS = {
   Statistics: Statistics,
   FX: Fx,
   Positions: Positions,
-  Journal: Journal,
+  "Closed trades": Journal,
   Ops: Ops,
 } as const;
 

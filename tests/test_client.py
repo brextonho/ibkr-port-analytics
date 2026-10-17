@@ -1,18 +1,18 @@
-"""Retry classification (PRD §3.4): 1019 retries, 1012 fails immediately."""
+"""Retry classification: 1019 retries, 1012 fails immediately."""
 from __future__ import annotations
 
 from datetime import date
 
 import pytest
 
-from ingestion.config import FlexSettings, RetrySettings
-from ingestion.flex.client import (
+from portfolio.config import FlexSettings, RetrySettings
+from portfolio.flex.client import (
     FlexFatalError,
     FlexRetryExhaustedError,
     fetch_statement,
 )
 
-FLEX = FlexSettings(query_id="123", token="tok", base_url="https://flex.example")
+FLEX = FlexSettings(query_id="123", token="tok")
 WINDOW = dict(from_date=date(2026, 7, 3), to_date=date(2026, 7, 17))
 RETRY = RetrySettings(attempts=3, backoff_seconds=1.0)
 
@@ -42,7 +42,7 @@ class FakeHttp:
     def __call__(self, url: str, params: dict, headers: dict) -> bytes:
         endpoint = url.rsplit("/", 1)[-1]
         self.calls.append((endpoint, params))
-        assert headers.get("User-Agent")  # header must always be present (§3.3)
+        assert headers.get("User-Agent")  # IB requires the header
         return self.scripts[endpoint].pop(0)
 
 

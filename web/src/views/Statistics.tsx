@@ -3,15 +3,14 @@ import type {
   DividendRow,
   Dimension,
   ExposureSlice,
-  NavPoint,
+  Performance,
   Period,
-  ReturnPoint,
+  SeriesStats,
 } from "../api/types";
 import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { num, pct, sgd } from "../format";
 import { useFetch } from "../hooks";
-import { computeWindowStats, type SeriesStats } from "../windowStats";
 import { Exposures } from "./Exposures";
 import { StatCard } from "../components/StatCard";
 
@@ -28,23 +27,23 @@ interface Cell {
 }
 
 const SERIES_ROWS: { label: string; cell: (s: SeriesStats) => Cell }[] = [
-  { label: "Return", cell: (s) => ({ value: signedPct(s.totalReturn), tone: toneOf(s.totalReturn) }) },
+  { label: "Return", cell: (s) => ({ value: signedPct(s.total_return), tone: toneOf(s.total_return) }) },
   { label: "Annualized return", cell: (s) => ({ value: signedPct(s.annualized), tone: toneOf(s.annualized) }) },
   { label: "Volatility (ann.)", cell: (s) => ({ value: pct(s.volatility) }) },
   { label: "Sharpe", cell: (s) => ({ value: num(s.sharpe) }) },
   { label: "Sortino", cell: (s) => ({ value: num(s.sortino) }) },
-  { label: "Max drawdown", cell: (s) => ({ value: pct(s.maxDrawdown), tone: badIfNeg(s.maxDrawdown) }) },
-  { label: "Current drawdown", cell: (s) => ({ value: pct(s.currentDrawdown), tone: badIfNeg(s.currentDrawdown) }) },
+  { label: "Max drawdown", cell: (s) => ({ value: pct(s.max_drawdown), tone: badIfNeg(s.max_drawdown) }) },
+  { label: "Current drawdown", cell: (s) => ({ value: pct(s.current_drawdown), tone: badIfNeg(s.current_drawdown) }) },
   { label: "Calmar", cell: (s) => ({ value: num(s.calmar) }) },
   {
     label: "Best day",
-    cell: (s) => ({ value: signedPct(s.bestDay?.r ?? null), tone: "good", sub: s.bestDay?.date }),
+    cell: (s) => ({ value: signedPct(s.best_day?.r ?? null), tone: "good", sub: s.best_day?.date }),
   },
   {
     label: "Worst day",
-    cell: (s) => ({ value: signedPct(s.worstDay?.r ?? null), tone: "bad", sub: s.worstDay?.date }),
+    cell: (s) => ({ value: signedPct(s.worst_day?.r ?? null), tone: "bad", sub: s.worst_day?.date }),
   },
-  { label: "Positive days", cell: (s) => ({ value: pct(s.positiveDays, 0) }) },
+  { label: "Positive days", cell: (s) => ({ value: pct(s.positive_days, 0) }) },
   { label: "1-day VaR 95% (hist.)", cell: (s) => ({ value: pct(s.var95), tone: badIfNeg(s.var95) }) },
 ];
 
@@ -85,12 +84,10 @@ function CellView({ cell }: { cell: Cell }) {
 export function Statistics() {
   const [period, setPeriod] = useState<Period>("all");
   const [by, setBy] = useState<Dimension>("currency");
-  const returns = useFetch<ReturnPoint[]>(`/returns?period=${period}`);
+  const perf = useFetch<Performance | null>(`/performance?period=${period}`);
   const exposures = useFetch<ExposureSlice[]>(`/exposures?by=${by}`);
   const dividends = useFetch<DividendRow[]>(`/dividends?period=${period}`);
-  const nav = useFetch<NavPoint[]>(`/nav?period=${period}`);
-
-  const w = useMemo(() => (returns.data ? computeWindowStats(returns.data) : null), [returns.data]);
+  const w = perf.data;
 
   const divs = useMemo(
     () => (dividends.data ? summarizeDividends(dividends.data) : []),
@@ -98,11 +95,11 @@ export function Statistics() {
   );
   const gross = divs.reduce((t, d) => t + d.gross, 0);
   const tax = divs.reduce((t, d) => t + d.tax, 0);
-  const navs = (nav.data ?? []).map((d) => d.nav_sgd).filter((v): v is number => v !== null);
+  const series = w?.series ?? [];
+  const navs = series.map((d) => d.nav_sgd).filter((v): v is number => v !== null);
   const avgNav = navs.length > 0 ? navs.reduce((t, v) => t + v, 0) / navs.length : null;
-  const navDays = nav.data && nav.data.length > 1
-    ? daysBetween(nav.data[0].report_date, nav.data[nav.data.length - 1].report_date)
-    : 0;
+  const navDays =
+    series.length > 1 ? daysBetween(series[0].report_date, series[series.length - 1].report_date) : 0;
   // Net dividends over average NAV, scaled to a year of calendar days.
   const divYield = avgNav && navDays > 0 ? ((gross + tax) / avgNav) * (365 / navDays) : null;
   const unattributed = divs.some((d) => d.symbol === "Unattributed");
@@ -115,10 +112,10 @@ export function Statistics() {
         { label: "Excess return", cell: { value: signedPct(r.excess), tone: toneOf(r.excess) } },
         { label: "Beta", cell: { value: num(r.beta) } },
         { label: "Correlation", cell: { value: num(r.correlation) } },
-        { label: "Tracking error (ann.)", cell: { value: pct(r.trackingError) } },
-        { label: "Information ratio", cell: { value: num(r.infoRatio) } },
-        { label: "Up capture", cell: { value: pct(r.upCapture, 0) } },
-        { label: "Down capture", cell: { value: pct(r.downCapture, 0) } },
+        { label: "Tracking error (ann.)", cell: { value: pct(r.tracking_error) } },
+        { label: "Information ratio", cell: { value: num(r.info_ratio) } },
+        { label: "Up capture", cell: { value: pct(r.up_capture, 0) } },
+        { label: "Down capture", cell: { value: pct(r.down_capture, 0) } },
       ]
     : [];
 
@@ -155,12 +152,12 @@ export function Statistics() {
           )}
         </h2>
       </div>
-      {!returns.data ? (
-        <LoadingOrError loading={returns.loading} error={returns.error} />
+      {perf.loading && !perf.data ? (
+        <LoadingOrError loading={perf.loading} error={perf.error} />
       ) : !w ? (
         <EmptyState>No returns in this window — run ingestion or pick a longer period.</EmptyState>
       ) : (
-        <div className={`two-col${returns.loading ? " stale" : ""}`}>
+        <div className={`two-col${perf.loading ? " stale" : ""}`}>
           <Panel title="Portfolio vs VWRA (SGD)">
             <table className="data-table">
               <thead>

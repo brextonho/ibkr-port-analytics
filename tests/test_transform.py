@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from ingestion.transform import RAW_TABLE_ORDER, transform_all
+from portfolio.transform import RAW_TABLE_ORDER, transform_all
 
 INGESTED_AT = datetime(2026, 7, 17, tzinfo=timezone.utc)
 
@@ -73,13 +73,12 @@ def test_empty_sections_transform_to_empty_row_lists(rows):
 
 def test_underconfigured_cash_section_fails_with_the_fix(frames):
     # IB lets a section be enabled with its fields unticked; a real pull came
-    # back with dateTime alone. Classifying flows from that is impossible, and
-    # proceeding would book deposits as investment gains (§7.4).
+    # back with dateTime alone. Without type and amount, dividends can't be
+    # told apart from deposits.
     import pandas as pd
     import pytest
 
-    from ingestion.transform.base import IncompleteSectionError
-    from ingestion.transform.cash import transform_cash
+    from portfolio.transform import IncompleteSectionError, transform_table
 
     # ibflex fills every dataclass field, so unticked attributes arrive as
     # present-but-all-None columns, not absent ones.
@@ -92,7 +91,7 @@ def test_underconfigured_cash_section_fails_with_the_fix(frames):
         "transactionID": None,
     }])
     with pytest.raises(IncompleteSectionError) as exc:
-        transform_cash(df, ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc))
+        transform_table("cash_transactions", df)
     assert "Cash Transactions" in str(exc.value)
     assert "type" in str(exc.value)
 
@@ -102,7 +101,7 @@ def test_complete_cash_section_still_transforms(frames):
 
     import pandas as pd
 
-    from ingestion.transform.cash import transform_cash
+    from portfolio.transform import transform_table
 
     df = pd.DataFrame([{
         "transactionID": "t1",
@@ -112,7 +111,7 @@ def test_complete_cash_section_still_transforms(frames):
         "fxRateToBase": Decimal("1"),
         "dateTime": "2025-09-15;20:20:00",
     }])
-    out = transform_cash(df, ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc))
+    out = transform_table("cash_transactions", df)
     assert out["amount_sgd"].tolist() == [Decimal("1000")]
 
 
@@ -123,7 +122,7 @@ def test_cash_conid_resolved_from_isin_when_absent():
 
     import pandas as pd
 
-    from ingestion.transform.cash import transform_cash
+    from portfolio.transform import transform_table
 
     df = pd.DataFrame([
         {
@@ -148,10 +147,6 @@ def test_cash_conid_resolved_from_isin_when_absent():
         },
     ])
     securities = pd.DataFrame([{"conid": "208813720", "isin": "US02079K1079"}])
-    out = transform_cash(
-        df,
-        ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc),
-        securities=securities,
-    )
+    out = transform_table("cash_transactions", df, securities=securities)
     assert out["conid"].tolist()[0] == "208813720"
     assert pd.isna(out["conid"].tolist()[1])
