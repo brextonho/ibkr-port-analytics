@@ -64,6 +64,25 @@ def refresh_benchmark(engine: Engine, settings: Settings) -> int:
         return upsert_rows(conn, Base.metadata.tables["benchmark_prices"], frame_to_rows(prices))
 
 
+def benchmark_from_holding(engine: Engine, settings: Settings, symbol: str) -> int:
+    """Demo only: the synthetic year has its own VWRA, so its daily marks are
+    the benchmark — real-world prices wouldn't move with simulated holdings."""
+    p, s = Base.metadata.tables["positions"], Base.metadata.tables["securities"]
+    stmt = (
+        select(p.c.snapshot_date, p.c.mark_price, p.c.currency, p.c.fx_rate_to_base)
+        .join(s, s.c.conid == p.c.conid)
+        .where(s.c.symbol == symbol)
+    )
+    with engine.connect() as conn:
+        rows = [
+            dict(price_date=r.snapshot_date, ticker=settings.benchmark, close_local=r.mark_price,
+                 currency=r.currency, close_sgd=r.mark_price * r.fx_rate_to_base)
+            for r in conn.execute(stmt)
+        ]
+    with engine.begin() as conn:
+        return upsert_rows(conn, Base.metadata.tables["benchmark_prices"], rows)
+
+
 def rebuild_derived(engine: Engine, settings: Settings) -> dict[str, int]:
     derived = compute_derived(
         read_frames(engine), base_currency=settings.base_currency, benchmark_ticker=settings.benchmark
@@ -76,8 +95,15 @@ def rebuild_derived(engine: Engine, settings: Settings) -> dict[str, int]:
     return {name: len(rows) for name, rows in derived.items()}
 
 
-def run(settings: Settings, *, xml_paths: Sequence[str | Path] = (), benchmark: bool = True) -> int:
-    """Run once; returns a process exit code (0 = success)."""
+def run(
+    settings: Settings,
+    *,
+    xml_paths: Sequence[str | Path] = (),
+    benchmark: bool = True,
+    benchmark_holding: str | None = None,
+) -> int:
+    """Run once; returns a process exit code (0 = success). benchmark_holding
+    takes benchmark prices from that held symbol instead of Yahoo (the demo)."""
     engine = make_engine(settings.database_url)
     started_at = datetime.now(timezone.utc)
     t0 = time.monotonic()
@@ -116,7 +142,9 @@ def run(settings: Settings, *, xml_paths: Sequence[str | Path] = (), benchmark: 
         requested_from = min(w[0] for w in windows)
         requested_to = max(w[1] for w in windows)
 
-        if benchmark:  # a Yahoo Finance outage must not fail the run
+        if benchmark_holding:
+            counts["benchmark_prices"] = benchmark_from_holding(engine, settings, benchmark_holding)
+        elif benchmark:  # a Yahoo Finance outage must not fail the run
             try:
                 counts["benchmark_prices"] = refresh_benchmark(engine, settings)
             except Exception:

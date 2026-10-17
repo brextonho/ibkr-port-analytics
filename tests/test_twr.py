@@ -49,9 +49,16 @@ def test_no_change_in_nav_gives_nan_returns_and_zero_flows():
     assert (ib_daily_flows(pd.DataFrame(), DATES) == 0).all()
 
 
-def test_fixture_returns_chain_to_ib_reported_twr(raw_frames):
-    nav_dates = pd.DatetimeIndex(
-        pd.to_datetime(raw_frames["nav_history"]["report_date"]).sort_values()
-    )
-    twr = chain(ib_daily_returns(raw_frames["change_in_nav"], nav_dates)).iloc[-1]
-    assert twr * 100 == pytest.approx(0.6235337558)
+def test_demo_year_twr_strips_out_deposits(raw_frames):
+    """Chained IB TWR equals growth rebuilt from NAV with each day's deposits
+    taken out at day end — the convention the demo's statements use."""
+    nav = raw_frames["nav_history"].sort_values("report_date")
+    dates = pd.DatetimeIndex(pd.to_datetime(nav["report_date"]))
+    navs = nav["total"].astype(float).to_numpy()
+    flows = ib_daily_flows(raw_frames["change_in_nav"], dates).to_numpy()
+    rebuilt = 1.0
+    for prev, now, flow in zip(navs[:-1], navs[1:], flows[1:]):
+        rebuilt *= (now - flow) / prev
+    twr = chain(ib_daily_returns(raw_frames["change_in_nav"], dates)).iloc[-1]
+    assert twr == pytest.approx(rebuilt - 1, abs=1e-9)
+    assert abs(navs[-1] / navs[0] - 1 - twr) > 0.1  # NAV growth would count the 17,000 of deposits

@@ -61,10 +61,12 @@ def test_log_additivity_is_exact():
         )
 
 
-def test_fx_rate_levels_pivot(raw_frames):
+def test_fx_rate_levels_pivot(raw_frames, xml_rows):
     levels = fx_rate_levels(raw_frames["fx_rates"])
-    assert levels.loc[pd.Timestamp("2026-07-15"), "EUR"] == pytest.approx(1.4777)
-    assert levels.shape[1] == 6  # one column per currency
+    last = xml_rows("ConversionRate")[-1]
+    assert levels.loc[pd.Timestamp(last["reportDate"]), last["fromCurrency"]] == pytest.approx(float(last["rate"]))
+    assert list(levels.columns) == ["EUR", "JPY", "USD"]  # one column per currency
+    assert len(levels) == 260
 
 
 def test_empty_inputs_produce_zero_fx_return():

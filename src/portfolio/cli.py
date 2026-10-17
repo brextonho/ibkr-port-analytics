@@ -30,12 +30,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = load_settings(args.config, database=DEMO_DB if args.demo else args.db)
+    if args.demo:  # the demo account isn't yours; don't warn that it differs
+        settings = settings.model_copy(update={"account_id": None})
 
     if args.command == "ingest":
         from portfolio.ingest import run
 
-        xml = [DEMO_XML] if args.demo and not args.xml else args.xml or []
-        return run(settings, xml_paths=xml, benchmark=not args.no_benchmark)
+        if args.demo and not args.xml:
+            return run(settings, xml_paths=[DEMO_XML], benchmark_holding="VWRA")
+        return run(settings, xml_paths=args.xml or [], benchmark=not args.no_benchmark)
 
     import uvicorn
 

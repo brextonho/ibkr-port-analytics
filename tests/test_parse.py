@@ -1,86 +1,79 @@
-"""The fixture is a censored real Flex pull; these tests pin what ibflex gives us."""
+"""What ibflex gives us from the demo year (one statement per business day)."""
 from __future__ import annotations
 
+import re
 from datetime import date
 from decimal import Decimal
 
-
-def test_statement_identity(stmt):
-    assert stmt.accountId == "DEMO0001"
-    assert stmt.fromDate == date(2026, 7, 15)
-    assert stmt.toDate == date(2026, 7, 15)
+import pytest
 
 
-def test_section_row_counts(frames):
-    assert len(frames["nav"]) == 2  # prior-date anchor row + report day
-    assert len(frames["positions"]) == 7
-    assert len(frames["securities"]) == 7
-    assert len(frames["fx_rates"]) == 6
-    assert len(frames["change_in_nav"]) == 1
-    assert frames["trades"].empty
-    assert frames["cash_transactions"].empty
-
-
-def test_money_arrives_as_decimal_and_dates_as_dates(frames):
-    nav = frames["nav"].sort_values("reportDate").iloc[-1]
-    assert isinstance(nav["total"], Decimal)
-    assert nav["total"] == Decimal("96711.27489")
-    assert nav["reportDate"] == date(2026, 7, 15)
-
-
-def test_change_in_nav_carries_the_twr_oracle(frames):
-    row = frames["change_in_nav"].iloc[0]
-    assert row["twr"] == Decimal("0.6235337558")
-    assert row["fxTranslation"] == Decimal("0.75024")
-    assert row["depositsWithdrawals"] == Decimal("0")
-
-
-def test_day_segmented_pull_parses_every_statement(tmp_path, fixture_xml_path):
-    # Breakout by Day segments a multi-day window into one <FlexStatement>
-    # per day; the fixture is a one-day pull, so fabricate a
-    # second segment from it.
-    import re
-
-    from portfolio.flex.parse import parse_statements
-
+def _first_statement_xml(fixture_xml_path) -> tuple[str, str]:
+    """(whole file, its first <FlexStatement>…</FlexStatement> block)."""
     xml = fixture_xml_path.read_text()
-    one = re.search(r"<FlexStatement .*?</FlexStatement>", xml, re.S).group(0)
-    two = one.replace("2026-07-15", "2026-07-16")
-    path = tmp_path / "segmented.xml"
+    return xml, re.search(r"<FlexStatement .*?</FlexStatement>", xml, re.S).group(0)
+
+
+def _one_statement_file(tmp_path, fixture_xml_path, edit=lambda s: s):
+    xml, first = _first_statement_xml(fixture_xml_path)
+    path = tmp_path / "one_day.xml"
     path.write_text(
-        xml.replace(one, one + two).replace(
-            '<FlexStatements count="1">', '<FlexStatements count="2">'
-        )
+        '<FlexQueryResponse queryName="t" type="AF"><FlexStatements count="1">\n'
+        + edit(first)
+        + "\n</FlexStatements></FlexQueryResponse>"
     )
-
-    stmts = parse_statements(path)
-    assert len(stmts) == 2
-    assert [s.toDate for s in stmts] == [date(2026, 7, 15), date(2026, 7, 16)]
+    return path
 
 
-def test_segments_merge_into_one_frame_per_section(stmt, frames):
-    from portfolio.flex.frames import to_frames
+def test_every_day_is_its_own_statement(stmts, xml_rows):
+    assert len(stmts) == len(xml_rows("FlexStatement")) == 260
+    assert {s.accountId for s in stmts} == {"DEMO0001"}
+    assert all(s.fromDate == s.toDate for s in stmts)
+    assert stmts[0].toDate == date(2025, 10, 2) and stmts[-1].toDate == date(2026, 9, 30)
 
-    merged = to_frames([stmt, stmt])
-    for name, frame in frames.items():
-        assert len(merged[name]) == 2 * len(frame), name
+
+def test_sections_merge_across_statements(frames, xml_rows):
+    for frame, tag in [
+        ("nav", "EquitySummaryByReportDateInBase"),
+        ("positions", "OpenPosition"),
+        ("fx_rates", "ConversionRate"),
+        ("change_in_nav", "ChangeInNAV"),
+        ("cash_transactions", "CashTransaction"),
+        ("cash_report", "CashReportCurrency"),
+        ("closed_lots", "Lot"),
+    ]:
+        assert len(frames[frame]) == len(xml_rows(tag)), frame
+    assert len(frames["trades"]) == len(xml_rows("Trade"))  # Lots split out
+
+
+def test_money_arrives_as_decimal_and_dates_as_dates(frames, xml_rows):
+    last = frames["change_in_nav"].iloc[-1]
+    assert isinstance(last["endingValue"], Decimal)
+    assert last["endingValue"] == Decimal(xml_rows("ChangeInNAV")[-1]["endingValue"])
+    assert last["toDate"] == date(2026, 9, 30)
+
+
+def test_one_day_statement_parses_alone(tmp_path, fixture_xml_path):
+    from portfolio.flex.parse import parse_statement
+
+    stmt = parse_statement(_one_statement_file(tmp_path, fixture_xml_path))
+    assert stmt.toDate == date(2025, 10, 2)
 
 
 def test_not_ready_pnl_message_refuses_the_statement(tmp_path, fixture_xml_path):
     # IB zeroes every P&L field when its daily run hasn't finished and says
     # so only in a <Message>; ingesting it would overwrite good data with 0s.
-    import pytest
-
     from portfolio.flex.parse import StatementNotReadyError, parse_statements
 
-    xml = fixture_xml_path.read_text().replace(
-        "<FlexStatements",
-        "<Message>Realized P/L is not ready and has been disabled for this "
-        "statement.</Message>\n<FlexStatements",
-        1,
-    )
     path = tmp_path / "not_ready.xml"
-    path.write_text(xml)
+    path.write_text(
+        fixture_xml_path.read_text().replace(
+            "<FlexStatements",
+            "<Message>Realized P/L is not ready and has been disabled for this statement.</Message>\n"
+            "<FlexStatements",
+            1,
+        )
+    )
     with pytest.raises(StatementNotReadyError):
         parse_statements(path)
 
@@ -91,24 +84,28 @@ def test_closed_lots_split_out_and_tagged_with_closing_trade(tmp_path, fixture_x
     from portfolio.flex.frames import to_frames
     from portfolio.flex.parse import parse_statements
 
-    common = 'accountId="DEMO0001" currency="USD" fxRateToBase="1.3" conid="4391" symbol="AMD"'
+    common = 'accountId="DEMO0001" currency="USD" fxRateToBase="1.3" conid="900106" symbol="NVDA"'
     trades = (
-        f'<Trade {common} tradeID="T1" tradeDate="2026-07-15" quantity="-10" '
+        f'<Trade {common} tradeID="T1" tradeDate="2025-10-02" quantity="-10" '
         'openCloseIndicator="C" levelOfDetail="EXECUTION" />'
-        f'<Lot {common} tradeID="" transactionID="O1" tradeDate="2026-07-15" quantity="4" '
-        'cost="400" fifoPnlRealized="60" openDateTime="2026-06-10;09:30:00" '
-        'levelOfDetail="CLOSED_LOT" />'
-        f'<Lot {common} tradeID="" transactionID="O2" tradeDate="2026-07-15" quantity="6" '
-        'cost="600" fifoPnlRealized="75" openDateTime="2026-06-30;09:30:00" '
-        'levelOfDetail="CLOSED_LOT" />'
-        f'<Trade {common} tradeID="T2" tradeDate="2026-07-15" quantity="5" '
+        f'<Lot {common} tradeID="" transactionID="O1" tradeDate="2025-10-02" quantity="4" '
+        'cost="400" fifoPnlRealized="60" openDateTime="2025-06-10;09:30:00" levelOfDetail="CLOSED_LOT" />'
+        f'<Lot {common} tradeID="" transactionID="O2" tradeDate="2025-10-02" quantity="6" '
+        'cost="600" fifoPnlRealized="75" openDateTime="2025-06-30;09:30:00" levelOfDetail="CLOSED_LOT" />'
+        f'<Trade {common} tradeID="T2" tradeDate="2025-10-02" quantity="5" '
         'openCloseIndicator="O" levelOfDetail="EXECUTION" />'
     )
-    path = tmp_path / "lots.xml"
-    path.write_text(fixture_xml_path.read_text().replace("<Trades>", "<Trades>" + trades, 1))
-
+    path = _one_statement_file(
+        tmp_path, fixture_xml_path, lambda s: re.sub(r"<Trades>.*?</Trades>", f"<Trades>{trades}</Trades>", s, flags=re.S)
+    )
     frames = to_frames(parse_statements(path))
     assert frames["trades"]["tradeID"].tolist() == ["T1", "T2"]
+    assert frames["closed_lots"]["closingTradeID"].tolist() == ["T1", "T1"]
+    assert frames["closed_lots"]["transactionID"].tolist() == ["O1", "O2"]
+
+
+def test_demo_lots_follow_their_sale(frames):
     lots = frames["closed_lots"]
-    assert lots["closingTradeID"].tolist() == ["T1", "T1"]
-    assert lots["transactionID"].tolist() == ["O1", "O2"]
+    assert lots["closingTradeID"].notna().all()
+    nvda = lots[lots["symbol"] == "NVDA"]
+    assert len(nvda) == 2 and nvda["closingTradeID"].nunique() == 1  # one sale, two purchase lots

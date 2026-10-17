@@ -15,36 +15,49 @@ def fixture_xml_path() -> Path:
 
 
 @pytest.fixture(scope="session")
-def stmt(fixture_xml_path):
-    from portfolio.flex.parse import parse_statement
+def stmts(fixture_xml_path):
+    """The demo year: one statement per business day (Breakout by Day)."""
+    from portfolio.flex.parse import parse_statements
 
-    return parse_statement(fixture_xml_path)
+    return parse_statements(fixture_xml_path)
 
 
 @pytest.fixture(scope="session")
-def frames(stmt):
+def frames(stmts):
     from portfolio.flex.frames import to_frames
 
-    return to_frames(stmt)
+    return to_frames(stmts)
+
+
+@pytest.fixture(scope="session")
+def xml_rows(fixture_xml_path):
+    """Attributes of every <tag> element, read straight from the XML with the
+    standard library — an independent check on what the pipeline produces."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(fixture_xml_path).getroot()
+    return lambda tag: [e.attrib for e in root.iter(tag)]
 
 
 @pytest.fixture(scope="session")
 def raw_frames(frames):
-    """Raw-table DataFrames as marts consume them (transform output shape)."""
+    """Raw tables as the derived-table code reads them: transformed, upserted
+    into a scratch database (which collapses rows repeated across days), and
+    read back — the production path."""
     from datetime import datetime, timezone
 
-    import pandas as pd
+    from portfolio.load.db import make_engine
+    from portfolio.load.models import Base
+    from portfolio.load.read import read_frames
+    from portfolio.load.upsert import upsert_rows
+    from portfolio.transform import RAW_TABLE_ORDER, transform_all
 
-    from portfolio.transform import transform_all
-
-    rows = transform_all(
-        frames,
-        ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc),
-        base_currency="SGD",
-    )
-    out = {name: pd.DataFrame(table_rows) for name, table_rows in rows.items()}
-    out["benchmark_prices"] = pd.DataFrame()
-    return out
+    rows = transform_all(frames, ingested_at=datetime(2026, 10, 1, tzinfo=timezone.utc), base_currency="SGD")
+    eng = make_engine("sqlite://")
+    with eng.begin() as conn:
+        for name in RAW_TABLE_ORDER:
+            upsert_rows(conn, Base.metadata.tables[name], rows[name])
+    return read_frames(eng, [*RAW_TABLE_ORDER, "benchmark_prices"])
 
 
 @pytest.fixture()

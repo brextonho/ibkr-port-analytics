@@ -17,7 +17,7 @@ def _count(conn, table) -> int:
     return conn.execute(select(func.count()).select_from(table)).scalar()
 
 
-def test_upsert_twice_is_idempotent_end_to_end(engine, frames):
+def test_upsert_twice_is_idempotent_end_to_end(engine, frames, xml_rows):
     rows = transform_all(frames, ingested_at=INGESTED_AT, base_currency="SGD")
     for _ in range(2):
         with engine.begin() as conn:
@@ -25,17 +25,19 @@ def test_upsert_twice_is_idempotent_end_to_end(engine, frames):
                 upsert_rows(conn, Base.metadata.tables[name], rows[name])
     with engine.connect() as conn:
         counts = {name: _count(conn, Base.metadata.tables[name]) for name in RAW_TABLE_ORDER}
+    distinct = lambda tag, *keys: len({tuple(r[k] for k in keys) for r in xml_rows(tag)})  # noqa: E731
     assert counts == {
-        "securities": 7,
-        "nav_history": 2,
-        "positions": 7,
-        "trades": 0,
-        "closed_lots": 0,
-        "cash_balances": 4,
-        "cash_transactions": 0,
-        "change_in_nav": 1,
-        "fx_rates": 6,
+        "securities": distinct("SecurityInfo", "conid"),
+        "nav_history": distinct("EquitySummaryByReportDateInBase", "reportDate"),  # days repeat as anchors
+        "positions": len(xml_rows("OpenPosition")),
+        "trades": len(xml_rows("Trade")),
+        "closed_lots": len(xml_rows("Lot")),
+        "cash_balances": len(xml_rows("CashReportCurrency")),
+        "cash_transactions": len(xml_rows("CashTransaction")),
+        "change_in_nav": len(xml_rows("ChangeInNAV")),
+        "fx_rates": len(xml_rows("ConversionRate")),
     }
+    assert counts["nav_history"] == 261
 
 
 def test_conflicting_row_updates_in_place(engine):

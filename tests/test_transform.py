@@ -19,56 +19,48 @@ def test_all_raw_tables_present(rows):
     assert set(rows) == set(RAW_TABLE_ORDER)
 
 
-def test_nav_history_shape(rows):
-    nav = sorted(rows["nav_history"], key=lambda r: r["report_date"])
-    assert len(nav) == 2
-    latest = nav[-1]
-    assert latest["report_date"] == date(2026, 7, 15)
-    assert latest["total"] == Decimal("96711.27489")
-    assert latest["base_currency"] == "SGD"
-    assert latest["ingested_at"] == INGESTED_AT
+def test_nav_history_shape(rows, xml_rows):
+    last = max(rows["nav_history"], key=lambda r: r["report_date"])
+    assert last["report_date"] == date(2026, 9, 30)
+    assert last["total"] == Decimal(xml_rows("EquitySummaryByReportDateInBase")[-1]["total"])
+    assert last["base_currency"] == "SGD"
+    assert last["ingested_at"] == INGESTED_AT
 
 
-def test_positions_use_ib_base_value_and_string_enums(rows):
-    positions = rows["positions"]
-    assert len(positions) == 7
-    imae = next(p for p in positions if p["conid"] == "79000336")
+def test_positions_use_ib_base_value_and_string_enums(rows, xml_rows):
+    src = xml_rows("OpenPosition")[-1]
+    row = next(p for p in rows["positions"] if p["conid"] == src["conid"] and p["snapshot_date"].isoformat() == src["reportDate"])
     # IB's own positionValueInBase, not a float round-trip
-    assert imae["position_value_sgd"] == Decimal("6826.974")
-    assert imae["quantity"] == Decimal("50")
-    assert imae["side"] == "Long"
-    assert imae["level_of_detail"] == "SUMMARY"
-    assert isinstance(imae["side"], str)  # enum coerced to its .value
+    assert row["position_value_sgd"] == Decimal(src["positionValueInBase"])
+    assert row["unrealized_capital_gains_pnl"] + row["unrealized_fx_pnl"] == pytest.approx(row["unrealized_pnl"], abs=1e-5)
+    assert row["side"] == "Long" and isinstance(row["side"], str)  # enum coerced to its .value
+    assert row["level_of_detail"] == "SUMMARY"
 
 
 def test_securities_deduped_on_conid(rows):
-    securities = rows["securities"]
-    conids = [s["conid"] for s in securities]
-    assert len(conids) == len(set(conids))
-    aapl = next(s for s in securities if s["conid"] == "265598")
-    assert aapl["asset_category"] == "STK"
-    assert aapl["sub_category"] == "COMMON"
-    assert aapl["issuer_country_code"] == "US"
+    conids = [s["conid"] for s in rows["securities"]]
+    assert len(conids) == len(set(conids)) == 7  # listed in all 260 statements, kept once
+    msft = next(s for s in rows["securities"] if s["symbol"] == "MSFT")
+    assert (msft["asset_category"], msft["sub_category"], msft["issuer_country_code"]) == ("STK", "COMMON", "US")
 
 
-def test_fx_rates_quoted_in_base(rows):
-    fx = rows["fx_rates"]
-    assert len(fx) == 6
-    eur = next(r for r in fx if r["currency"] == "EUR")
-    assert eur["rate_to_base"] == Decimal("1.4777")
-    assert eur["rate_date"] == date(2026, 7, 15)
+def test_fx_rates_quoted_in_base(rows, xml_rows):
+    src = xml_rows("ConversionRate")[-1]
+    row = next(r for r in rows["fx_rates"] if r["currency"] == src["fromCurrency"] and r["rate_date"].isoformat() == src["reportDate"])
+    assert row["rate_to_base"] == Decimal(src["rate"])
 
 
-def test_change_in_nav_mapping(rows):
-    row = rows["change_in_nav"][0]
-    assert row["from_date"] == date(2026, 7, 15)
-    assert row["twr_ib"] == Decimal("0.6235337558")
-    assert row["forex_translation"] == Decimal("0.75024")
+def test_change_in_nav_mapping(rows, xml_rows):
+    src, row = xml_rows("ChangeInNAV")[-1], rows["change_in_nav"][-1]
+    assert row["from_date"] == row["to_date"] == date(2026, 9, 30)
+    assert row["twr_ib"] == Decimal(src["twr"])
+    assert row["forex_translation"] == Decimal(src["fxTranslation"])
 
 
-def test_empty_sections_transform_to_empty_row_lists(rows):
-    assert rows["trades"] == []
-    assert rows["cash_transactions"] == []
+def test_cash_transactions_get_conid_from_isin(rows):
+    # the demo, like real pulls, has isin but no conid on dividend rows
+    divs = [r for r in rows["cash_transactions"] if r["type"] == "Dividends"]
+    assert divs and all(r["conid"] for r in divs)
 
 
 def test_underconfigured_cash_section_fails_with_the_fix(frames):

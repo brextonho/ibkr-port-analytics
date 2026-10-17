@@ -18,21 +18,29 @@ def test_both_tables_present(derived):
     assert set(derived) == set(DERIVED_TABLES)
 
 
-def test_daily_returns_spine(derived):
-    first, second = derived["daily_returns"]
-    assert first["report_date"] == date(2026, 7, 14)
-    assert first["r_period"] is None  # anchor row: no prior NAV
-    assert second["report_date"] == date(2026, 7, 15)
-    assert second["r_period"] == pytest.approx(0.006235337558)  # IB's own TWR
-    assert second["external_flow_sgd"] == 0.0
-    # single-day fx history → no fx return → all of it is local return
-    assert second["r_fx"] == pytest.approx(0.0)
-    assert second["r_local"] == pytest.approx(second["r_period"])
-    assert second["benchmark_r"] is None  # no benchmark prices ingested
+def test_daily_returns_spine(derived, xml_rows):
+    rows = derived["daily_returns"]
+    assert rows[0]["report_date"] == date(2025, 10, 1)
+    assert rows[0]["r_period"] is None  # the opening NAV only anchors day one
+    assert len(rows) == 261
+    # every daily return is IB's own TWR for that day
+    twr = {r["toDate"]: float(r["twr"]) / 100 for r in xml_rows("ChangeInNAV")}
+    for row in rows[1:]:
+        assert row["r_period"] == pytest.approx(twr[row["report_date"].isoformat()])
+    # flows are IB's deposits: 10,000 + 15,000 − 8,000
+    assert sum(r["external_flow_sgd"] for r in rows) == pytest.approx(17_000)
 
 
-def test_fx_attribution_empty_with_single_day_of_rates(derived):
-    assert derived["fx_attribution"] == []
+def test_local_and_fx_split_multiplies_back_exactly(derived):
+    for r in derived["daily_returns"][1:]:
+        assert 1 + r["r_period"] == pytest.approx((1 + r["r_local"]) * (1 + r["r_fx"]), abs=1e-12)
+
+
+def test_fx_attribution_is_weight_times_move(derived):
+    rows = derived["fx_attribution"]
+    assert {r["currency"] for r in rows} == {"USD", "EUR", "JPY"}  # SGD holdings have no FX effect
+    for r in rows:
+        assert r["contribution_bps"] == pytest.approx(r["weight"] * r["fx_return"] * 10_000)
 
 
 def test_empty_nav_gives_empty_tables():
