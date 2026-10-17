@@ -1,0 +1,53 @@
+# Two independent data paths sharing only the database (PRD §2).
+# `ingestion` is a one-shot container invoked by the host scheduler:
+#   docker compose run --rm ingestion
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portfolio}
+      POSTGRES_DB: portfolio
+    ports:
+      - "127.0.0.1:5432:5432" # localhost only — no auth on the stack (§11.2)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ingestion:
+    build: ./ingestion
+    profiles: ["ingestion"] # not started by `up`; run explicitly, exits when done
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://portfolio:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/portfolio
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ./api
+    ports:
+      - "127.0.0.1:8000:8000" # localhost only — no auth on the stack (§11.2)
+    environment:
+      DATABASE_URL: postgresql+psycopg://portfolio:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/portfolio
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

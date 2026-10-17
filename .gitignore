@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Secrets & local config
+.env
+config/config.yaml
+
+# Node
+node_modules/
+web/dist/
+
+# Local databases
+*.db
+*.sqlite3
+
+# docs
+/prd
+
+# data files
+data/
+config/position_notes.yaml
+config/security_tags.yaml
+
+# IDE
+.idea/
+.vscode/

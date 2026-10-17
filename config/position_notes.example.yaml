@@ -1,0 +1,12 @@
+# Qualitative position layer (PRD §6.2). Keyed by conid.
+#
+# Example:
+# "265598":
+#   thesis: "One paragraph on why this position exists."
+#   catalyst_date: 2026-09-15
+#   target_price: 250
+#   base_price: 200
+#   bear_price: 150
+#   sellable_date: 2026-12-31
+
+{}

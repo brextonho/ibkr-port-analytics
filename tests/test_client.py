@@ -1,0 +1,83 @@
+"""Retry classification (PRD §3.4): 1019 retries, 1012 fails immediately."""
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+
+from ingestion.config import FlexSettings, RetrySettings
+from ingestion.flex.client import (
+    FlexFatalError,
+    FlexRetryExhaustedError,
+    fetch_statement,
+)
+
+FLEX = FlexSettings(query_id="123", token="tok", base_url="https://flex.example")
+WINDOW = dict(from_date=date(2026, 7, 3), to_date=date(2026, 7, 17))
+RETRY = RetrySettings(attempts=3, backoff_seconds=1.0)
+
+SEND_OK = b"""<FlexStatementResponse timestamp="x">
+<Status>Success</Status><ReferenceCode>REF42</ReferenceCode>
+<Url>https://flex.example/GetStatement</Url></FlexStatementResponse>"""
+
+STATEMENT = b"""<FlexQueryResponse queryName="q" type="AF"><FlexStatements count="1">
+</FlexStatements></FlexQueryResponse>"""
+
+
+def _error(code: int) -> bytes:
+    return (
+        f'<FlexStatementResponse timestamp="x"><Status>Warn</Status>'
+        f"<ErrorCode>{code}</ErrorCode><ErrorMessage>msg</ErrorMessage>"
+        f"</FlexStatementResponse>"
+    ).encode()
+
+
+class FakeHttp:
+    """Scripted responses keyed by endpoint, recording every call."""
+
+    def __init__(self, send_responses: list[bytes], get_responses: list[bytes]):
+        self.scripts = {"SendRequest": send_responses, "GetStatement": get_responses}
+        self.calls: list[tuple[str, dict]] = []
+
+    def __call__(self, url: str, params: dict, headers: dict) -> bytes:
+        endpoint = url.rsplit("/", 1)[-1]
+        self.calls.append((endpoint, params))
+        assert headers.get("User-Agent")  # header must always be present (§3.3)
+        return self.scripts[endpoint].pop(0)
+
+
+def test_happy_path_passes_explicit_window_and_reference_code():
+    http = FakeHttp([SEND_OK], [STATEMENT])
+    payload, retries = fetch_statement(
+        FLEX, **WINDOW, retry=RETRY, http_get=http, sleep=lambda s: None
+    )
+    assert payload == STATEMENT
+    assert retries == []
+    send_params = http.calls[0][1]
+    assert send_params["fd"] == "20260703" and send_params["td"] == "20260717"
+    assert http.calls[1][1]["q"] == "REF42"
+
+
+def test_retryable_code_backs_off_then_succeeds():
+    http = FakeHttp([SEND_OK], [_error(1019), _error(1009), STATEMENT])
+    sleeps: list[float] = []
+    payload, retries = fetch_statement(
+        FLEX, **WINDOW, retry=RETRY, http_get=http, sleep=sleeps.append
+    )
+    assert payload == STATEMENT
+    assert [r["code"] for r in retries] == [1019, 1009]
+    assert sleeps == [1.0, 2.0]  # exponential backoff
+
+
+def test_fatal_code_fails_immediately_without_retry():
+    http = FakeHttp([_error(1012)], [])
+    with pytest.raises(FlexFatalError) as exc_info:
+        fetch_statement(FLEX, **WINDOW, retry=RETRY, http_get=http, sleep=lambda s: None)
+    assert exc_info.value.code == 1012
+    assert len(http.calls) == 1  # exactly one attempt, no wasted rate budget
+
+
+def test_retry_budget_exhausts():
+    http = FakeHttp([SEND_OK], [_error(1019)] * 3)
+    with pytest.raises(FlexRetryExhaustedError):
+        fetch_statement(FLEX, **WINDOW, retry=RETRY, http_get=http, sleep=lambda s: None)
