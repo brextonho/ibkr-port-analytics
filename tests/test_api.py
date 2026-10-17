@@ -207,3 +207,12 @@ def test_failed_run_is_recorded_and_watermark_holds(tmp_path, fixture_xml_path):
     assert r["status"] == "failed" and r["error_code"] == "StatementNotReadyError"
     assert r["watermark_after"] is None
     assert TestClient(create_app(url)).get("/api/positions").json() == []  # nothing written
+
+
+def test_dashboard_page_is_rechecked_on_every_load(client):
+    from portfolio.api.app import WEB_DIST
+
+    if not WEB_DIST.is_dir():
+        pytest.skip("dashboard not built")
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/api/health").headers

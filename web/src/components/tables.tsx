@@ -12,8 +12,25 @@ import { useEffect, useState } from "react";
  *  reorder columns, or up into the bar to group by it; group rows read
  *  "Core (12)", with "Unassigned" for the empty group (grouping turns null
  *  into the string "null"). */
+// Room between the table's edge and its first and last columns.
+const EDGES = { "&:first-of-type": { pl: 2 }, "&:last-of-type": { pr: 2 } };
+
+// Header controls always sit right of the label. The library reverses the
+// order for right-aligned (number) columns, which put their drag handle and
+// sort icon on the left; this keeps them in one place and the label flush
+// right above the numbers.
+const HEADER = {
+  ...EDGES,
+  "& .Mui-TableHeadCell-Content, & .Mui-TableHeadCell-Content-Labels": { flexDirection: "row" },
+  "&.MuiTableCell-alignRight .Mui-TableHeadCell-Content": { justifyContent: "flex-end" },
+};
+
 export function tableOptions<T extends MRT_RowData>(): Partial<MRT_TableOptions<T>> {
   return {
+    enableBottomToolbar: false, // no paging, so it would only be an empty strip
+    muiTableHeadCellProps: { sx: HEADER },
+    muiTableBodyCellProps: { sx: EDGES },
+    muiTableFooterCellProps: { sx: EDGES },
     enableGrouping: true,
     enableColumnOrdering: true,
     enableColumnDragging: true,
