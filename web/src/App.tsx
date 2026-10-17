@@ -85,7 +85,7 @@ export default function App() {
               }}
             >
               {KEYS.map((k) => (
-                <Tab key={k} value={k} label={VIEWS[k].label} />
+                <Tab key={k} value={k} label={VIEWS[k].label} disableRipple />
               ))}
             </Tabs>
             <LastRun onOpen={() => setTab("ops")} />

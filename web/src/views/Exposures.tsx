@@ -1,6 +1,7 @@
 import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import Grid from "@mui/material/Grid2";
-import { useState } from "react";
+import { Chart, type ArcElement, type Plugin } from "chart.js";
+import { useMemo, useRef, useState } from "react";
 import { Doughnut } from "react-chartjs-2";
 import { useApi } from "../api/client";
 import type { Dimension, ExposureSlice } from "../api/types";
@@ -17,12 +18,41 @@ const DIMENSIONS: { value: Dimension; label: string }[] = [
   { value: "sector", label: "Sector" },
 ];
 
+/** Draws "bucket share" beside each slice wide enough to fit a label. */
+function sliceLabels(get: () => { text: string[]; color: string }): Plugin<"doughnut"> {
+  return {
+    id: "sliceLabels",
+    afterDatasetsDraw(chart) {
+      const { text, color } = get();
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = `12px ${Chart.defaults.font.family}`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = "middle";
+      chart.getDatasetMeta(0).data.forEach((el, i) => {
+        const { x, y, startAngle, endAngle, outerRadius } = el as ArcElement;
+        if (endAngle - startAngle < 0.25 || !text[i]) return; // under ~4% the labels collide; the table has them
+        const mid = (startAngle + endAngle) / 2;
+        const [dx, dy] = [Math.cos(mid), Math.sin(mid)];
+        ctx.textAlign = Math.abs(dx) < 0.3 ? "center" : dx > 0 ? "left" : "right";
+        ctx.fillText(text[i], x + dx * (outerRadius + 10), y + dy * (outerRadius + 10));
+      });
+      ctx.restore();
+    },
+  };
+}
+
 /** Where the money is today, by one dimension, from the latest holdings. */
 export function Exposures() {
   const [by, setBy] = useState<Dimension>("currency");
   const p = usePalette();
   const { data, error, isPending } = useApi<ExposureSlice[]>(`/exposures?by=${by}`);
   const color = (i: number) => p.series[Math.min(i, p.series.length - 1)];
+
+  // The plugin reads the latest labels through a ref so it can stay one instance.
+  const labelsRef = useRef({ text: [] as string[], color: "" });
+  labelsRef.current = { text: data?.map((s) => `${s.bucket} ${pctPoints(s.pct_of_nav, 0)}`) ?? [], color: p.ink2 };
+  const labelPlugin = useMemo(() => sliceLabels(() => labelsRef.current), []);
 
   return (
     <Box>
@@ -64,12 +94,13 @@ export function Exposures() {
                     },
                   ],
                 }}
+                plugins={[labelPlugin]}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
                   cutout: "62%",
+                  layout: { padding: { top: 24, bottom: 24, left: 96, right: 96 } }, // room for the slice labels
                   plugins: {
-                    legend: { display: false },
                     tooltip: {
                       callbacks: {
                         label: (ctx) => {

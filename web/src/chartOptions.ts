@@ -1,24 +1,20 @@
 // Shared chart.js options implementing the mark specs: thin marks, hairline
-// recessive grid, muted axis ink, index-mode hover tooltips, legend for >1
-// series only. Text wears text tokens, never series color.
+// recessive grid, muted axis ink, index-mode hover tooltips. The legend is
+// HTML (Panel's `legend`), not canvas. Text wears text tokens, never series color.
 import type { Palette } from "./theme";
 
 type Formatter = (value: number) => string;
 
 export function lineOptions(
   p: Palette,
-  opts: { yFormat?: Formatter; legend?: boolean } = {},
+  opts: { yFormat?: Formatter } = {},
 ) {
-  const { yFormat, legend = false } = opts;
+  const { yFormat } = opts;
   return {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index" as const, intersect: false },
     plugins: {
-      legend: {
-        display: legend,
-        labels: { color: p.ink2, boxWidth: 12, boxHeight: 12, usePointStyle: true },
-      },
       tooltip: {
         backgroundColor: p.mode === "light" ? p.ink : "#24323a",
         titleColor: "#ffffff",

@@ -80,7 +80,7 @@ export function MeasurableLine({
   }
 
   return (
-    <Panel title={title} height={height} actions={readout}>
+    <Panel title={title} height={height} actions={readout} legend={datasets.length > 1 ? datasets : undefined}>
       <Line ref={chartRef} data={data} options={opts} plugins={[plugin]} />
     </Panel>
   );

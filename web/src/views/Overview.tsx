@@ -201,7 +201,7 @@ export function Overview() {
               lineDataset(p, 0, "Portfolio", rows.map((d) => d.cum_twr)),
               lineDataset(p, 1, "VWRA", rows.map((d) => d.benchmark_cum)),
             ]}
-            options={lineOptions(p, { yFormat: (v) => pct(v, 0), legend: true })}
+            options={lineOptions(p, { yFormat: (v) => pct(v, 0) })}
             describe={(s, e) => describeReturns(rows, s, e)}
           />
           <MeasurableLine

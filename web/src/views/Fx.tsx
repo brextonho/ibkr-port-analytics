@@ -23,6 +23,16 @@ export function Fx() {
   const currencies = [...new Set(fxRows.map((r) => r.currency))].sort();
   const colors = seriesColorMap(currencies, p);
   const byKey = new Map(fxRows.map((r) => [`${r.report_date}|${r.currency}`, r.cum_contribution]));
+  const cumulative = [
+    lineDataset(p, 0, "In SGD", rows.map((d) => d.cum_twr)),
+    lineDataset(p, 1, "In local currencies", rows.map((d) => d.cum_local)),
+    lineDataset(p, 2, "Exchange-rate effect", rows.map((d) => d.cum_fx)),
+  ];
+  const byCurrency = currencies.map((c) => ({
+    ...lineDataset(p, 0, c, dates.map((d) => byKey.get(`${d}|${c}`) ?? null)),
+    borderColor: colors.get(c),
+    backgroundColor: colors.get(c),
+  }));
 
   return (
     <div>
@@ -54,17 +64,10 @@ export function Fx() {
               ]}
             />
           </Box>
-          <Panel title="Cumulative return" height={300}>
+          <Panel title="Cumulative return" height={300} legend={cumulative}>
             <Line
-              data={{
-                labels: rows.map((d) => d.report_date),
-                datasets: [
-                  lineDataset(p, 0, "In SGD", rows.map((d) => d.cum_twr)),
-                  lineDataset(p, 1, "In local currencies", rows.map((d) => d.cum_local)),
-                  lineDataset(p, 2, "Exchange-rate effect", rows.map((d) => d.cum_fx)),
-                ],
-              }}
-              options={lineOptions(p, { yFormat: (v) => pct(v, 0), legend: true })}
+              data={{ labels: rows.map((d) => d.report_date), datasets: cumulative }}
+              options={lineOptions(p, { yFormat: (v) => pct(v, 0) })}
             />
           </Panel>
         </>
@@ -75,17 +78,10 @@ export function Fx() {
       ) : dates.length === 0 ? (
         <EmptyState>No exchange-rate history in this period yet. It needs at least two days of rates.</EmptyState>
       ) : (
-        <Panel title="Exchange-rate effect by currency (cumulative, approximate)" height={280}>
+        <Panel title="Exchange-rate effect by currency (cumulative, approximate)" height={280} legend={byCurrency}>
           <Line
-            data={{
-              labels: dates,
-              datasets: currencies.map((c) => ({
-                ...lineDataset(p, 0, c, dates.map((d) => byKey.get(`${d}|${c}`) ?? null)),
-                borderColor: colors.get(c),
-                backgroundColor: colors.get(c),
-              })),
-            }}
-            options={lineOptions(p, { yFormat: (v) => pct(v, 1), legend: true })}
+            data={{ labels: dates, datasets: byCurrency }}
+            options={lineOptions(p, { yFormat: (v) => pct(v, 1) })}
           />
         </Panel>
       )}

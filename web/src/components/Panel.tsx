@@ -7,11 +7,13 @@ export function Panel({
   children,
   height,
   actions,
+  legend,
 }: {
   title?: string;
   children: ReactNode;
   height?: number;
   actions?: ReactNode;
+  legend?: { label?: string; borderColor?: unknown }[]; // chart datasets, shown as a key under the title
 }) {
   return (
     <Paper component="section" sx={{ p: 2, mb: 2 }}>
@@ -19,6 +21,16 @@ export function Panel({
         <Stack direction="row" alignItems="baseline" justifyContent="space-between" gap={2} flexWrap="wrap" mb={1.5}>
           {title && <Typography variant="h3">{title}</Typography>}
           {actions}
+        </Stack>
+      )}
+      {legend && (
+        <Stack component="ul" direction="row" gap={2} flexWrap="wrap" sx={{ listStyle: "none", m: 0, mb: 1.5, p: 0 }}>
+          {legend.map((d) => (
+            <Typography key={d.label} component="li" variant="body2" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <Box component="span" sx={{ width: 14, height: 3, borderRadius: 1, bgcolor: String(d.borderColor) }} />
+              {d.label}
+            </Typography>
+          ))}
         </Stack>
       )}
       <Box sx={height ? { height, position: "relative" } : undefined}>{children}</Box>

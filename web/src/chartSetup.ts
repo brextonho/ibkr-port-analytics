@@ -4,7 +4,6 @@ import {
   CategoryScale,
   Chart,
   Filler,
-  Legend,
   LinearScale,
   LineElement,
   PointElement,
@@ -33,7 +32,6 @@ Chart.register(
   BarElement,
   ArcElement,
   Tooltip,
-  Legend,
   Filler,
 );
 

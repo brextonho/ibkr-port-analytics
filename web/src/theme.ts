@@ -59,6 +59,9 @@ export const theme = createTheme({
       styleOverrides: {
         // every number lines up in columns
         body: { fontVariantNumeric: "tabular-nums" },
+        // always show the scrollbar track so short tabs don't shift sideways
+        // (scrollbar-gutter on the root is ignored by some Chromium builds)
+        html: { overflowY: "scroll" },
       },
     },
     MuiPaper: { defaultProps: { variant: "outlined" } },
