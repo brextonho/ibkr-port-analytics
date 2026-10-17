@@ -98,6 +98,9 @@ class Position(Base):
     cost_basis_price: Mapped[Optional[Decimal]]
     cost_basis_money: Mapped[Optional[Decimal]]
     unrealized_pnl: Mapped[Optional[Decimal]]
+    # split of unrealized_pnl (base ccy): price move vs FX move since purchase
+    unrealized_capital_gains_pnl: Mapped[Optional[Decimal]]
+    unrealized_fx_pnl: Mapped[Optional[Decimal]]
     percent_of_nav: Mapped[Optional[Decimal]]
     side: Mapped[Optional[str]]
     level_of_detail: Mapped[Optional[str]]
@@ -143,6 +146,35 @@ class Trade(Base):
     ingested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class ClosedLot(Base):
+    """Closed Lots rows from Trades: one per (closing execution, opening lot).
+
+    With Base Currency P&L, open_price, cost and fifo_pnl_realized are in the
+    base currency, not the quote currency.
+    """
+
+    __tablename__ = "closed_lots"
+
+    trade_id: Mapped[str] = mapped_column(primary_key=True)  # the closing execution
+    open_transaction_id: Mapped[str] = mapped_column(primary_key=True)
+    conid: Mapped[Optional[str]] = mapped_column(ForeignKey("securities.conid"))
+    account_id: Mapped[Optional[str]]
+    currency: Mapped[Optional[str]]
+    fx_rate_to_base: Mapped[Optional[Decimal]]
+    trade_date: Mapped[Optional[date]]
+    date_time: Mapped[Optional[datetime]]
+    open_date_time: Mapped[Optional[datetime]]
+    quantity: Mapped[Optional[Decimal]]
+    open_price: Mapped[Optional[Decimal]]
+    cost: Mapped[Optional[Decimal]]
+    fifo_pnl_realized: Mapped[Optional[Decimal]]
+    capital_gains_pnl: Mapped[Optional[Decimal]]
+    fx_pnl: Mapped[Optional[Decimal]]
+    buy_sell: Mapped[Optional[str]]
+    notes_codes: Mapped[Optional[str]]
+    ingested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class CashTransaction(Base):
     __tablename__ = "cash_transactions"
 
@@ -158,7 +190,6 @@ class CashTransaction(Base):
     type: Mapped[Optional[str]]
     code: Mapped[Optional[str]]
     description: Mapped[Optional[str]]
-    is_external_flow: Mapped[Optional[bool]]
     ingested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 

@@ -81,6 +81,9 @@ class PositionRow(BaseModel):
     position_value_sgd: float | None
     percent_of_nav: float | None
     unrealized_pnl: float | None
+    unrealized_capital_gains_pnl: float | None  # price part of unrealized_pnl
+    unrealized_fx_pnl: float | None  # FX part
+    avg_cost_local: float | None  # position currency, comparable to mark_price
     issuer_country_code: str | None
     geography: str | None
     theme: str | None

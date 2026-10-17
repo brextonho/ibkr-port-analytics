@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import HTTPException, Request
-from sqlalchemy import MetaData, Table, create_engine
+from sqlalchemy import MetaData, Table, create_engine, func, select
 from sqlalchemy.engine import Engine
 
 WAREHOUSE_TABLES = frozenset(
@@ -35,19 +35,19 @@ WAREHOUSE_TABLES = frozenset(
     }
 )
 
-Period = Literal["1m", "3m", "6m", "1y", "ytd", "all"]
+Period = Literal["1m", "3m", "6m", "ytd", "1y", "3y", "5y", "all"]
 
-_PERIOD_DAYS = {"1m": 30, "3m": 91, "6m": 182, "1y": 365}
+_PERIOD_DAYS = {"1m": 30, "3m": 91, "6m": 182, "1y": 365, "3y": 1095, "5y": 1826}
 
 
-def period_start(period: Period, *, today: date | None = None) -> date | None:
-    """First date included by a period filter; None means no lower bound."""
-    today = today or date.today()
-    if period == "all":
+def period_start(period: Period, *, end: date | None) -> date | None:
+    """First date included by a period ending at `end` (the latest data date,
+    not today, so 1M means the last month of data). None: no lower bound."""
+    if period == "all" or end is None:
         return None
     if period == "ytd":
-        return date(today.year, 1, 1)
-    return today - timedelta(days=_PERIOD_DAYS[period])
+        return date(end.year, 1, 1)
+    return end - timedelta(days=_PERIOD_DAYS[period])
 
 
 @dataclass
@@ -69,6 +69,13 @@ class Warehouse:
                 detail=f"warehouse table {name!r} not found — run ingestion first",
             )
         return table
+
+
+    def period_start(self, period: Period) -> date | None:
+        t = self.table("daily_returns")
+        with self.engine.connect() as conn:
+            end = conn.execute(select(func.max(t.c.report_date))).scalar()
+        return period_start(period, end=end)
 
 
 def build_warehouse(database_url: str | None = None) -> Warehouse:

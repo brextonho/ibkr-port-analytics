@@ -45,8 +45,8 @@ export function Positions() {
           r.description,
           r.currency,
           r.quantity,
+          r.avg_cost_local,
           r.mark_price,
-          r.cost_basis_price,
           r.position_value_sgd,
           r.percent_of_nav,
           r.unrealized_pnl,
@@ -61,9 +61,8 @@ export function Positions() {
           { name: "Description", formatter: clipCell },
           "Ccy",
           { name: "Qty", formatter: numCell(4) },
+          { name: "Avg cost", formatter: numCell(2) },
           { name: "Last", formatter: numCell(2) },
-          // IB reports cost basis in base currency, not the quote currency
-          { name: "Avg cost (SGD)", formatter: numCell(2) },
           { name: "Value (SGD)", formatter: numCell(0) },
           {
             name: "% NAV",

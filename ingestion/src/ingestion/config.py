@@ -87,11 +87,9 @@ class PortfolioSettings:
 @dataclass(frozen=True)
 class MetricsSettings:
     grain: str = "daily"
-    flow_convention: str = "end_of_day"  # end_of_day | beginning_of_day (§7.3)
     annualization_factor: int = 252
     rolling_window_days: int = 63
     risk_free_rate: float = 0.0
-    twr_validation_tolerance_bps: float = 5.0
 
 
 @dataclass(frozen=True)
@@ -201,7 +199,6 @@ def load_settings(
     m_raw = _interpolate(raw.get("metrics") or {})
     metrics = MetricsSettings(
         grain=m_raw.get("grain", MetricsSettings.grain),
-        flow_convention=m_raw.get("flow_convention", MetricsSettings.flow_convention),
         annualization_factor=int(
             m_raw.get("annualization_factor", MetricsSettings.annualization_factor)
         ),
@@ -209,12 +206,6 @@ def load_settings(
             m_raw.get("rolling_window_days", MetricsSettings.rolling_window_days)
         ),
         risk_free_rate=float(m_raw.get("risk_free_rate", MetricsSettings.risk_free_rate)),
-        twr_validation_tolerance_bps=float(
-            m_raw.get(
-                "twr_validation_tolerance_bps",
-                MetricsSettings.twr_validation_tolerance_bps,
-            )
-        ),
     )
 
     e_raw = _interpolate(raw.get("enrichment") or {})

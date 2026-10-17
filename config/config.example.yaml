@@ -31,11 +31,9 @@ portfolio:
 
 metrics:
   grain: daily                  # NAV grain — INDEPENDENT of ingestion.cron
-  flow_convention: end_of_day   # end_of_day | beginning_of_day — validate vs twr_ib
   annualization_factor: 252
   rolling_window_days: 63
   risk_free_rate: 0.0
-  twr_validation_tolerance_bps: 5
 
 notifications:
   enabled: false                # flip on once SMTP creds are in .env

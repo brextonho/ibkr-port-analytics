@@ -5,7 +5,6 @@ from datetime import datetime
 
 import pandas as pd
 
-from ingestion.analytics.flows import is_external_flow
 from ingestion.transform.base import coerce_enums, remap, require_columns
 
 MAPPING = {
@@ -23,10 +22,8 @@ MAPPING = {
 }
 
 
-# Without these the section cannot classify external flows, and TWR would be
-# computed as if deposits were investment gains (§7.4).
 REQUIRED = {
-    "type": "external-vs-internal flow classification",
+    "type": "telling dividends and withholding tax apart from deposits",
     "amount": "the flow amount itself",
     "currency": "SGD conversion",
     "fxRateToBase": "SGD conversion",
@@ -68,10 +65,7 @@ def transform_cash(
         if resolved is not None:
             out["conid"] = out["conid"].where(out["conid"].notna(), resolved)
         out["amount_sgd"] = out["amount"] * out["fx_rate_to_base"]
-        # Whitelist classifier: raises on unknown types rather than guessing (§7.4)
-        out["is_external_flow"] = out["type"].map(is_external_flow)
     else:
         out["amount_sgd"] = None
-        out["is_external_flow"] = None
     out["ingested_at"] = ingested_at
     return out

@@ -46,7 +46,6 @@ def build_summary(
     flex_retries: list[dict[str, int]],
     rows_upserted: dict[str, int],
     error_message: str | None,
-    twr_line: str | None = None,
 ) -> str:
     lines = [
         f"Window:      {requested_from} → {requested_to}  (lookback {lookback_days}d)",
@@ -63,9 +62,6 @@ def build_summary(
         lines.append("Rows upserted:")
         for table, n in rows_upserted.items():
             lines.append(f"  {table:<20} {n:>5}")
-    if twr_line:
-        lines.append("")
-        lines.append(twr_line)  # makes every run a live regression test (§9.3)
     if error_message:
         lines.append("")
         lines.append(f"Error: {error_message}")
@@ -133,7 +129,6 @@ def main(argv: list[str] | None = None) -> int:
     watermark_after: date | None = None
     flex_retries: list[dict[str, int]] = []
     counts: dict[str, int] = {}
-    twr_line: str | None = None
 
     try:
         if args.xml:
@@ -229,18 +224,6 @@ def main(argv: list[str] | None = None) -> int:
                     conflict_cols=MART_CONFLICT_KEYS[table_name],
                 )
 
-        twr_line = marts.twr_validation.summary_line() if marts.twr_validation else None
-        if marts.twr_validation:
-            (logger.info if marts.twr_validation.within_tolerance else logger.warning)(
-                "%s", twr_line
-            )
-        if not marts.flow_check_ok:
-            logger.warning(
-                "external flows do not tie to change_in_nav.deposits_withdrawals "
-                "(diff %.2f SGD)",
-                marts.flow_check_diff,
-            )
-
         watermark_after = requested_to
         logger.info("ingested window %s → %s: %s", requested_from, requested_to, counts)
     except Exception as exc:  # record + notify, never die silently
@@ -269,7 +252,6 @@ def main(argv: list[str] | None = None) -> int:
             flex_retries=flex_retries,
             rows_upserted=counts,
             error_message=error_message,
-            twr_line=twr_line,
         )
         try:
             build_notifier(settings.notifications).send(subject, body)

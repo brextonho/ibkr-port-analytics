@@ -30,6 +30,7 @@ def test_upsert_twice_is_idempotent_end_to_end(engine, frames):
         "nav_history": 2,
         "positions": 7,
         "trades": 0,
+        "closed_lots": 0,
         "cash_transactions": 0,
         "change_in_nav": 1,
         "fx_rates": 6,

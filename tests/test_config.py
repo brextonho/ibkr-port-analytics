@@ -69,6 +69,5 @@ def test_defaults_match_prd(tmp_path):
     assert settings.ingestion.lookback_days == 14
     assert settings.ingestion.max_lookback_days == 365
     assert settings.ingestion.retry.attempts == 5
-    assert settings.metrics.flow_convention == "end_of_day"
     assert settings.metrics.annualization_factor == 252
     assert settings.notifications.backend == "none"

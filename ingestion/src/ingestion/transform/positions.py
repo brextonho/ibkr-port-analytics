@@ -20,6 +20,8 @@ MAPPING = {
     "costBasisPrice": "cost_basis_price",
     "costBasisMoney": "cost_basis_money",
     "fifoPnlUnrealized": "unrealized_pnl",
+    "unrealizedCapitalGainsPnl": "unrealized_capital_gains_pnl",
+    "unrealizedlFxPnl": "unrealized_fx_pnl",  # sic: IB's attribute name
     "percentOfNAV": "percent_of_nav",
     "side": "side",
     "levelOfDetail": "level_of_detail",

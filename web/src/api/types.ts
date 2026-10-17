@@ -1,7 +1,7 @@
 // Hand-mirrored from api/src/api/schemas.py (PRD §11.1).
 // OpenAPI → TS codegen is a deferred item (§13).
 
-export type Period = "1m" | "3m" | "6m" | "1y" | "ytd" | "all";
+export type Period = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "5y" | "all";
 export type Dimension = "asset_class" | "geography" | "currency" | "sector" | "theme";
 
 export interface NavPoint {
@@ -73,6 +73,9 @@ export interface PositionRow {
   position_value_sgd: number | null;
   percent_of_nav: number | null;
   unrealized_pnl: number | null;
+  unrealized_capital_gains_pnl: number | null; // price part of unrealized_pnl
+  unrealized_fx_pnl: number | null; // FX part
+  avg_cost_local: number | null; // position currency, comparable to mark_price
   issuer_country_code: string | null;
   geography: string | null;
   theme: string | null;

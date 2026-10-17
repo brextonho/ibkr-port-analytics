@@ -13,7 +13,7 @@ from ingestion.transform.fx_rates import transform_fx_rates
 from ingestion.transform.nav import transform_nav
 from ingestion.transform.positions import transform_positions
 from ingestion.transform.securities import transform_securities
-from ingestion.transform.trades import transform_trades
+from ingestion.transform.trades import transform_closed_lots, transform_trades
 
 # securities first: everything else FK-references conid
 RAW_TABLE_ORDER = [
@@ -21,6 +21,7 @@ RAW_TABLE_ORDER = [
     "nav_history",
     "positions",
     "trades",
+    "closed_lots",
     "cash_transactions",
     "change_in_nav",
     "fx_rates",
@@ -46,6 +47,9 @@ def transform_all(
         ),
         "trades": frame_to_rows(
             transform_trades(frames["trades"], ingested_at=ingested_at)
+        ),
+        "closed_lots": frame_to_rows(
+            transform_closed_lots(frames["closed_lots"], ingested_at=ingested_at)
         ),
         "cash_transactions": frame_to_rows(
             transform_cash(

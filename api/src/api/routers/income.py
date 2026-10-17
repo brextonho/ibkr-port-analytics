@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import and_, select
 
 from api import schemas
-from api.deps import Period, Warehouse, get_warehouse, period_start
+from api.deps import Period, Warehouse, get_warehouse
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ def pnl(period: Period = "1y", wh: Warehouse = Depends(get_warehouse)):
         .where(c.c.from_date == c.c.to_date)
         .order_by(c.c.to_date)
     )
-    start = period_start(period)
+    start = wh.period_start(period)
     if start is not None:
         stmt = stmt.where(c.c.to_date >= start)
     with wh.engine.connect() as conn:
@@ -67,7 +67,7 @@ def dividends(period: Period = "1y", wh: Warehouse = Depends(get_warehouse)):
         .where(t.c.type.in_(DIVIDEND_TYPES))
         .order_by(t.c.date_time)
     )
-    start = period_start(period)
+    start = wh.period_start(period)
     if start is not None:
         stmt = stmt.where(t.c.date_time >= start)
     with wh.engine.connect() as conn:

@@ -152,3 +152,18 @@ def test_dividends_empty_without_cash_transactions(client):
 def test_positions_carry_cost_basis(client):
     rows = client.get("/positions").json()
     assert all("cost_basis_price" in r and "fx_rate_to_base" in r for r in rows)
+
+
+def test_avg_cost_local_is_in_the_quote_currency(client):
+    # IMAE: 50 sh, value 4620 EUR at 1.4777, price P&L 613.2455 SGD →
+    # local cost 4620 − 613.2455/1.4777 = 4205.0 EUR → 84.10 per share
+    rows = {r["conid"]: r for r in client.get("/positions").json()}
+    imae = rows["79000336"]
+    assert imae["avg_cost_local"] == pytest.approx(84.10, abs=0.01)
+    assert imae["unrealized_fx_pnl"] == pytest.approx(63.916)
+
+
+def test_periods_anchor_to_latest_data_date_not_today(client):
+    # fixture data is from 2026-07; 1M must still include it whatever today is
+    assert len(client.get("/nav", params={"period": "1m"}).json()) == 2
+    assert len(client.get("/nav", params={"period": "5y"}).json()) == 2

@@ -7,6 +7,7 @@ results are stored back as NUMERIC.
 """
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,10 +18,6 @@ import pandas as pd
 
 from ingestion.analytics import risk
 from ingestion.analytics.exposures import asset_class_exposures, position_exposures
-from ingestion.analytics.flows import (
-    cross_check_against_change_in_nav,
-    external_flow_series,
-)
 from ingestion.analytics.fx import (
     currency_weights,
     daily_fx_attribution,
@@ -28,14 +25,10 @@ from ingestion.analytics.fx import (
     r_local_from,
 )
 from ingestion.analytics.journal import build_trade_journal, build_trade_stats
-from ingestion.analytics.twr import (
-    TwrValidation,
-    align_flows_to_nav_dates,
-    chain,
-    daily_twr_returns,
-    validate_against_ib,
-)
+from ingestion.analytics.twr import chain, ib_daily_flows, ib_daily_returns
 from ingestion.config import MetricsSettings
+
+logger = logging.getLogger(__name__)
 
 MART_TABLE_ORDER = [
     "daily_returns",
@@ -60,9 +53,6 @@ MART_CONFLICT_KEYS: dict[str, list[str] | None] = {
 @dataclass
 class MartsResult:
     rows: dict[str, list[dict[str, Any]]]
-    twr_validation: TwrValidation | None
-    flow_check_ok: bool
-    flow_check_diff: float
 
 
 def _clean(value: Any) -> Any:
@@ -91,12 +81,7 @@ def _rows(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def _empty_result() -> MartsResult:
-    return MartsResult(
-        rows={name: [] for name in MART_TABLE_ORDER},
-        twr_validation=None,
-        flow_check_ok=True,
-        flow_check_diff=0.0,
-    )
+    return MartsResult(rows={name: [] for name in MART_TABLE_ORDER})
 
 
 def compute_marts(
@@ -115,10 +100,12 @@ def compute_marts(
         nav_df["total"].astype(float).to_numpy(), index=nav_index
     )
 
-    # --- TWR spine (§7.2) ---
-    flow_events = external_flow_series(raw["cash_transactions"])
-    cf = align_flows_to_nav_dates(flow_events, nav_index)
-    r_period = daily_twr_returns(nav_total, cf, convention=metrics.flow_convention)
+    # --- TWR spine: IB's own daily TWR and flows ---
+    cf = ib_daily_flows(raw["change_in_nav"], nav_index)
+    r_period = ib_daily_returns(raw["change_in_nav"], nav_index)
+    missing = int(r_period.iloc[1:].isna().sum())  # first NAV row is the anchor
+    if missing:
+        logger.warning("%d NAV dates have no IB daily TWR; they chain as flat", missing)
     cum_twr = chain(r_period)
 
     # --- FX decomposition (§7.5–7.6) ---
@@ -208,18 +195,8 @@ def compute_marts(
     )
 
     # --- trade journal + stats (§7.9) ---
-    journal = build_trade_journal(raw["trades"], raw["securities"])
+    journal = build_trade_journal(raw["closed_lots"], raw["securities"])
     stats_row = build_trade_stats(journal, as_of=nav_index[-1].date())
-
-    # --- validations ---
-    twr_validation = validate_against_ib(
-        r_period,
-        raw["change_in_nav"],
-        tolerance_bps=metrics.twr_validation_tolerance_bps,
-    )
-    flow_ok, flow_diff = cross_check_against_change_in_nav(
-        float(cf.sum()), raw["change_in_nav"]
-    )
 
     return MartsResult(
         rows={
@@ -234,7 +211,4 @@ def compute_marts(
             if stats_row
             else [],
         },
-        twr_validation=twr_validation,
-        flow_check_ok=flow_ok,
-        flow_check_diff=flow_diff,
     )

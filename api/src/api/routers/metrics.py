@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from api import schemas
-from api.deps import Period, Warehouse, get_warehouse, period_start
+from api.deps import Period, Warehouse, get_warehouse
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ def drawdown(period: Period = "1y", wh: Warehouse = Depends(get_warehouse)):
     stmt = select(t.c.report_date, t.c.drawdown_current, t.c.max_drawdown).order_by(
         t.c.report_date
     )
-    start = period_start(period)
+    start = wh.period_start(period)
     if start is not None:
         stmt = stmt.where(t.c.report_date >= start)
     with wh.engine.connect() as conn:

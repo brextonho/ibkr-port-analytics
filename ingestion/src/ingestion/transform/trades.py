@@ -42,6 +42,35 @@ MAPPING = {
 }
 
 
+LOT_MAPPING = {
+    "closingTradeID": "trade_id",
+    "transactionID": "open_transaction_id",
+    "conid": "conid",
+    "accountId": "account_id",
+    "currency": "currency",
+    "fxRateToBase": "fx_rate_to_base",
+    "tradeDate": "trade_date",
+    "dateTime": "date_time",
+    "openDateTime": "open_date_time",
+    "quantity": "quantity",
+    "tradePrice": "open_price",
+    "cost": "cost",
+    "fifoPnlRealized": "fifo_pnl_realized",
+    "capitalGainsPnl": "capital_gains_pnl",
+    "fxPnl": "fx_pnl",
+    "buySell": "buy_sell",
+    "notes": "notes_codes",
+}
+
+
+def transform_closed_lots(df: pd.DataFrame, *, ingested_at: datetime) -> pd.DataFrame:
+    out = remap(coerce_enums(df), LOT_MAPPING)
+    if not out.empty:
+        out = out[out["trade_id"].notna() & out["open_transaction_id"].notna()]
+    out["ingested_at"] = ingested_at
+    return out
+
+
 def transform_trades(df: pd.DataFrame, *, ingested_at: datetime) -> pd.DataFrame:
     out = remap(coerce_enums(df), MAPPING)
     if not out.empty:

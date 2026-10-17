@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Sequence
 
 import pandas as pd
-from ibflex.Types import FlexStatement
+from ibflex.Types import FlexStatement, Lot
 
 SECTIONS = {
     "nav": "EquitySummaryInBase",
@@ -39,6 +39,22 @@ def _rows(stmt: FlexStatement, attr: str) -> list[Any]:
     return [section]
 
 
+def _closed_lots(stmt: FlexStatement) -> list[dict[str, Any]]:
+    """Closed Lots rows, each tagged with its closing execution's tradeID.
+
+    IB leaves tradeID blank on <Lot> rows and lists them directly after the
+    execution that closed them, so document order is the only link.
+    """
+    out: list[dict[str, Any]] = []
+    closing_trade_id = None
+    for row in _rows(stmt, "Trades"):
+        if isinstance(row, Lot):
+            out.append({**vars(row), "closingTradeID": closing_trade_id})
+        else:
+            closing_trade_id = row.tradeID
+    return out
+
+
 def to_frames(
     stmts: FlexStatement | Sequence[FlexStatement],
 ) -> dict[str, pd.DataFrame]:
@@ -52,7 +68,18 @@ def to_frames(
     """
     if isinstance(stmts, FlexStatement):
         stmts = [stmts]
-    return {
-        name: _frame([row for stmt in stmts for row in _rows(stmt, attr)])
+    frames = {
+        name: _frame(
+            [
+                row
+                for stmt in stmts
+                for row in _rows(stmt, attr)
+                if not isinstance(row, Lot)  # Trades also holds Closed Lots
+            ]
+        )
         for name, attr in SECTIONS.items()
     }
+    frames["closed_lots"] = pd.DataFrame(
+        [lot for stmt in stmts for lot in _closed_lots(stmt)]
+    )
+    return frames

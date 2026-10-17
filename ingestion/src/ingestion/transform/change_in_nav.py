@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from ingestion.transform.base import coerce_enums, remap
+from ingestion.transform.base import coerce_enums, remap, require_columns
 
 MAPPING = {
     "fromDate": "from_date",
@@ -28,7 +28,22 @@ MAPPING = {
 }
 
 
+# Daily returns are IB's own TWR, and the NAV chart's flow split is IB's own
+# deposits figure — both per day with Breakout by Day.
+REQUIRED = {
+    "twr": "the daily time-weighted return every performance number is built on",
+    "depositsWithdrawals": "separating deposits from market moves",
+}
+
+
 def transform_change_in_nav(df: pd.DataFrame, *, ingested_at: datetime) -> pd.DataFrame:
+    require_columns(
+        df,
+        REQUIRED,
+        section="Change in NAV",
+        where="Performance & Reports → Flex Queries → your query → Sections → "
+        "Change in NAV",
+    )
     out = remap(coerce_enums(df), MAPPING)
     out["ingested_at"] = ingested_at
     return out

@@ -8,44 +8,21 @@ import pytest
 
 from ingestion.analytics.journal import build_trade_journal, build_trade_stats
 
-TRADES = pd.DataFrame(
+# Closed Lots rows as IB sends them with Base Currency P&L: cost and realized
+# P&L already in SGD.
+LOTS = pd.DataFrame(
     [
-        # winner: +100 USD at 1.35 → +135 SGD, held 30 days
-        dict(
-            trade_id="t1",
-            conid="c1",
-            open_close_indicator="C",
-            fifo_pnl_realized=100.0,
-            fx_rate_to_base=1.35,
-            cost_basis=-1000.0,
-            quantity=-10.0,
-            trade_date=date(2026, 7, 10),
-            open_date_time=datetime(2026, 6, 10, 9, 30),
-        ),
+        # one sell (t1) closing two lots: 4 shares held 30 days, 6 held 10 days
+        dict(trade_id="t1", open_transaction_id="o1", conid="c1", quantity=4.0,
+             cost=400.0, fifo_pnl_realized=60.0, trade_date=date(2026, 7, 10),
+             open_date_time=datetime(2026, 6, 10, 9, 30)),
+        dict(trade_id="t1", open_transaction_id="o2", conid="c1", quantity=6.0,
+             cost=600.0, fifo_pnl_realized=75.0, trade_date=date(2026, 7, 10),
+             open_date_time=datetime(2026, 6, 30, 15, 59)),
         # loser: −50 SGD, held 2 days
-        dict(
-            trade_id="t2",
-            conid="c2",
-            open_close_indicator="C",
-            fifo_pnl_realized=-50.0,
-            fx_rate_to_base=1.0,
-            cost_basis=-500.0,
-            quantity=-5.0,
-            trade_date=date(2026, 7, 12),
-            open_date_time=datetime(2026, 7, 10, 9, 30),
-        ),
-        # open position: excluded
-        dict(
-            trade_id="t3",
-            conid="c1",
-            open_close_indicator="O",
-            fifo_pnl_realized=0.0,
-            fx_rate_to_base=1.35,
-            cost_basis=2000.0,
-            quantity=20.0,
-            trade_date=date(2026, 7, 14),
-            open_date_time=datetime(2026, 7, 14, 9, 30),
-        ),
+        dict(trade_id="t2", open_transaction_id="o3", conid="c2", quantity=5.0,
+             cost=500.0, fifo_pnl_realized=-50.0, trade_date=date(2026, 7, 12),
+             open_date_time=datetime(2026, 7, 10, 9, 30)),
     ]
 )
 
@@ -54,18 +31,20 @@ SECURITIES = pd.DataFrame({"conid": ["c1", "c2"], "symbol": ["AAA", "BBB"]})
 
 @pytest.fixture(scope="module")
 def journal():
-    return build_trade_journal(TRADES, SECURITIES)
+    return build_trade_journal(LOTS, SECURITIES)
 
 
-def test_only_closed_trades(journal):
-    assert set(journal["trade_id"]) == {"t1", "t2"}
+def test_one_row_per_closing_trade(journal):
+    assert sorted(journal["trade_id"]) == ["t1", "t2"]
 
 
 def test_winner_economics(journal):
     t1 = journal[journal["trade_id"] == "t1"].iloc[0]
-    assert t1["realized_pnl_sgd"] == pytest.approx(135.0)
-    assert t1["return_pct"] == pytest.approx(10.0)  # local ccy vs |cost basis|
-    assert t1["days_held"] == 30
+    assert t1["quantity"] == pytest.approx(10.0)
+    assert t1["realized_pnl_sgd"] == pytest.approx(135.0)  # already SGD: no fx rate
+    assert t1["return_pct"] == pytest.approx(13.5)  # 135 / 1000 cost
+    assert t1["open_date"] == date(2026, 6, 10)  # earliest lot
+    assert t1["days_held"] == 18  # (4×30 + 6×10) / 10, quantity-weighted
     assert bool(t1["is_winner"]) is True
     assert t1["symbol"] == "AAA"
 
@@ -77,7 +56,7 @@ def test_stats_measure_the_retail_pattern(journal):
     assert stats["avg_win_sgd"] == pytest.approx(135.0)
     assert stats["avg_loss_sgd"] == pytest.approx(-50.0)
     assert stats["slugging_ratio"] == pytest.approx(2.7)
-    assert stats["avg_hold_winners"] == pytest.approx(30.0)
+    assert stats["avg_hold_winners"] == pytest.approx(18.0)
     assert stats["avg_hold_losers"] == pytest.approx(2.0)
 
 

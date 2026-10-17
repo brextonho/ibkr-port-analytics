@@ -42,6 +42,17 @@ def positions(wh: Warehouse = Depends(get_warehouse)):
             p.c.position_value_sgd,
             p.c.percent_of_nav,
             p.c.unrealized_pnl,
+            p.c.unrealized_capital_gains_pnl,
+            p.c.unrealized_fx_pnl,
+            # local cost = local value − price P&L converted back at today's rate;
+            # exact, because IB books the FX part separately (unrealized_fx_pnl)
+            (
+                (
+                    p.c.position_value
+                    - p.c.unrealized_capital_gains_pnl / func.nullif(p.c.fx_rate_to_base, 0)
+                )
+                / func.nullif(p.c.quantity, 0)
+            ).label("avg_cost_local"),
             s.c.issuer_country_code,
             tags.c.geography,
             tags.c.theme,

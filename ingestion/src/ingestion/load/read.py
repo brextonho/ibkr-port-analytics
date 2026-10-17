@@ -14,6 +14,7 @@ RAW_TABLES_FOR_MARTS = [
     "nav_history",
     "positions",
     "trades",
+    "closed_lots",
     "cash_transactions",
     "change_in_nav",
     "fx_rates",

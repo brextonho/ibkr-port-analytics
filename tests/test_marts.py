@@ -41,18 +41,6 @@ def test_daily_returns_spine(result):
     assert second["benchmark_r"] is None  # no benchmark prices ingested yet
 
 
-def test_twr_validation_passes_against_ib(result):
-    v = result.twr_validation
-    assert v is not None
-    assert v.within_tolerance, v.summary_line()
-    assert v.diff_bps < 0.5
-
-
-def test_flow_cross_check_ties(result):
-    assert result.flow_check_ok
-    assert result.flow_check_diff == pytest.approx(0.0)
-
-
 def test_portfolio_metrics(result):
     rows = result.rows["portfolio_metrics"]
     assert len(rows) == 2

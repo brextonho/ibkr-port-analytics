@@ -1,6 +1,6 @@
 import type { Period } from "../api/types";
 
-const PERIODS: Period[] = ["1m", "3m", "6m", "1y", "ytd", "all"];
+const PERIODS: Period[] = ["1m", "3m", "6m", "ytd", "1y", "3y", "5y", "all"];
 
 export function PeriodPicker({
   value,

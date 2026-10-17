@@ -113,7 +113,6 @@ def test_complete_cash_section_still_transforms(frames):
         "dateTime": "2025-09-15;20:20:00",
     }])
     out = transform_cash(df, ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc))
-    assert out["is_external_flow"].tolist() == [True]
     assert out["amount_sgd"].tolist() == [Decimal("1000")]
 
 
