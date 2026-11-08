@@ -28,6 +28,23 @@ const HEADER = {
 export function tableOptions<T extends MRT_RowData>(): Partial<MRT_TableOptions<T>> {
   return {
     enableBottomToolbar: false, // no paging, so it would only be an empty strip
+    // Light mode: white table instead of the library's page-grey, a stronger
+    // "Grouped by" bar, and shaded group rows. Dark mode: the bar and group rows are lifted.
+    mrtTheme: (theme) => (theme.palette.mode === "light" ? { baseBackgroundColor: theme.palette.background.paper } : {}),
+    muiToolbarAlertBannerProps: {
+      sx: (theme) => ({
+        ...theme.applyStyles("light", { bgcolor: "#d0d1d6", color: "text.primary" }),
+        ...theme.applyStyles("dark", { bgcolor: "#2c353a" }), // dark grey, lifts it off the table
+      }),
+    },
+    muiTableBodyRowProps: ({ row }) => ({
+      sx: row.getIsGrouped()
+        ? (theme) => ({
+            ...theme.applyStyles("light", { "& > td": { bgcolor: "#d0d1d6" } }),
+            ...theme.applyStyles("dark", { "& > td": { bgcolor: "#2c353a" } }),
+          })
+        : undefined,
+    }),
     muiTableHeadCellProps: { sx: HEADER },
     muiTableBodyCellProps: { sx: EDGES },
     muiTableFooterCellProps: { sx: EDGES },

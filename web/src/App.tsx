@@ -69,7 +69,7 @@ export default function App() {
   if (account.data) setAccount(account.data); // before the views format any amount
   return (
     <>
-      <Box component="header" sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
+      <Box component="header" data-dark sx={{ bgcolor: "background.paper", color: "common.white", borderBottom: 1, borderColor: "divider" }}>
         <Container maxWidth="xl">
           <Stack direction="row" alignItems="center" columnGap={{ xs: 1.5, md: 3 }} sx={{ minHeight: 56 }} flexWrap="wrap">
             <Typography sx={{ fontWeight: 600, letterSpacing: "-0.01em", mr: "auto", "@media (min-width:900px)": { mr: 0 } }}>
@@ -86,6 +86,7 @@ export default function App() {
                 order: { xs: 3, md: 0 },
                 minHeight: 48,
                 "& .MuiTab-root": { minHeight: 48 },
+                "& .MuiTab-root:not(.Mui-selected)": { color: "common.white" },
               }}
             >
               {KEYS.map((k) => (
