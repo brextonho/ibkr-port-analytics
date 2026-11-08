@@ -164,6 +164,7 @@ def run(
                     if exc.code != 1003 or requested_to <= stop:
                         raise
                     logger.warning("no statement through %s (1003); retrying one day earlier", requested_to)
+                    time.sleep(3)
                     requested_to -= timedelta(days=1)
             LIVE_XML_DIR.mkdir(parents=True, exist_ok=True)
             saved = LIVE_XML_DIR / f"live_{requested_from:%Y%m%d}_{requested_to:%Y%m%d}.xml"
