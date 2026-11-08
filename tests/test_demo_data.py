@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 
 
-def test_demo_xml_matches_its_generator(fixture_xml_path):
+def test_demo_xml_matches_its_generator(fixture_xml_path, base_currency):
     script = Path(__file__).resolve().parents[1] / "scripts" / "make_demo_xml.py"
     spec = importlib.util.spec_from_file_location("make_demo_xml", script)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module  # dataclasses look their module up while loading
     spec.loader.exec_module(module)
-    assert module.simulate() == fixture_xml_path.read_text(), "rerun: uv run python scripts/make_demo_xml.py"
+    assert module.simulate(base_currency) == fixture_xml_path.read_text(), "rerun: uv run python scripts/make_demo_xml.py"

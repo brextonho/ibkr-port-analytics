@@ -35,7 +35,6 @@ class FlexSettings(_Strict):
 
 class Settings(_Strict):
     database: str = "portfolio.db"  # SQLite file path, or any SQLAlchemy URL
-    base_currency: str = "SGD"
     benchmark: str = "VWRA.L"  # Yahoo Finance ticker, converted to base currency
     risk_free_rate: float = 0.0  # annual, for Sharpe / Sortino
     lookback_days: int = 14  # overlap re-fetched on every live pull

@@ -10,8 +10,8 @@ from portfolio.analytics.marts import DERIVED_TABLES, benchmark_returns, compute
 
 
 @pytest.fixture(scope="module")
-def derived(raw_frames):
-    return compute_derived(raw_frames, base_currency="SGD", benchmark_ticker="VWRA.L")
+def derived(raw_frames, base_currency):
+    return compute_derived(raw_frames, base_currency=base_currency, benchmark_ticker="VWRA.L")
 
 
 def test_both_tables_present(derived):
@@ -28,7 +28,7 @@ def test_daily_returns_spine(derived, xml_rows):
     for row in rows[1:]:
         assert row["r_period"] == pytest.approx(twr[row["report_date"].isoformat()])
     # flows are IB's deposits: 10,000 + 15,000 − 8,000
-    assert sum(r["external_flow_sgd"] for r in rows) == pytest.approx(17_000)
+    assert sum(r["external_flow_base"] for r in rows) == pytest.approx(17_000)
 
 
 def test_local_and_fx_split_multiplies_back_exactly(derived):
@@ -36,9 +36,10 @@ def test_local_and_fx_split_multiplies_back_exactly(derived):
         assert 1 + r["r_period"] == pytest.approx((1 + r["r_local"]) * (1 + r["r_fx"]), abs=1e-12)
 
 
-def test_fx_attribution_is_weight_times_move(derived):
+def test_fx_attribution_is_weight_times_move(derived, xml_rows, base_currency):
     rows = derived["fx_attribution"]
-    assert {r["currency"] for r in rows} == {"USD", "EUR", "JPY"}  # SGD holdings have no FX effect
+    held = {r["currency"] for r in xml_rows("OpenPosition")}
+    assert {r["currency"] for r in rows} == held - {base_currency}  # base-currency holdings have no FX effect
     for r in rows:
         assert r["contribution_bps"] == pytest.approx(r["weight"] * r["fx_return"] * 10_000)
 
@@ -54,7 +55,7 @@ def test_benchmark_carries_last_close_over_holidays():
         {
             "ticker": "B",
             "price_date": [date(2026, 1, 2), date(2026, 1, 6)],  # no price on the 5th
-            "close_sgd": [100.0, 110.0],
+            "close_base": [100.0, 110.0],
         }
     )
     r = benchmark_returns(prices, "B", nav_dates)

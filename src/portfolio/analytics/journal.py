@@ -1,7 +1,7 @@
 """Closed trades, from IB's Closed Lots.
 
 One journal row per closing execution, summed over the lots it closed. With
-Base Currency P&L, lot cost and realized P&L are already in SGD. days_held is
+Base Currency P&L, lot cost and realized P&L are already in base currency. days_held is
 quantity-weighted across lots, so selling 10 shares bought on two dates
 counts each date by how many shares it contributed.
 """
@@ -17,7 +17,7 @@ JOURNAL_COLUMNS = [
     "close_date",
     "days_held",
     "quantity",
-    "realized_pnl_sgd",
+    "realized_pnl_base",
     "return_pct",
 ]
 
@@ -40,11 +40,11 @@ def build_trade_journal(closed_lots: pd.DataFrame, securities: pd.DataFrame) -> 
         close_date=("trade_date", "first"),
         quantity=("quantity", "sum"),
         cost=("cost", "sum"),
-        realized_pnl_sgd=("fifo_pnl_realized", "sum"),
+        realized_pnl_base=("fifo_pnl_realized", "sum"),
         qty_days=("qty_days", "sum"),
     ).reset_index()
     j["days_held"] = (j["qty_days"] / j["quantity"]).round()
-    j["return_pct"] = j["realized_pnl_sgd"] / j["cost"].abs().where(j["cost"] != 0) * 100.0
+    j["return_pct"] = j["realized_pnl_base"] / j["cost"].abs().where(j["cost"] != 0) * 100.0
 
     if not securities.empty:
         j = j.merge(securities[["conid", "symbol"]], on="conid", how="left")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from portfolio.config import ConfigError, load_settings
@@ -23,7 +25,6 @@ def _write(tmp_path, content: str):
 def test_missing_file_means_all_defaults(tmp_path):
     s = load_settings(tmp_path / "absent.yaml")
     assert s.database_url == "sqlite:///portfolio.db"
-    assert s.base_currency == "SGD"
     assert s.benchmark == "VWRA.L"
     assert s.lookback_days == 14
     assert s.retry.attempts == 5
@@ -67,7 +68,5 @@ def test_database_override_and_bare_paths(tmp_path):
 
 
 def test_example_config_is_valid():
-    from pathlib import Path
-
     example = Path(__file__).resolve().parents[1] / "config" / "config.example.yaml"
     assert load_settings(example).database == "portfolio.db"

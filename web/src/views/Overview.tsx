@@ -6,7 +6,7 @@ import { MeasurableLine, type ReadoutItem } from "../components/MeasurableLine";
 import { Metrics } from "../components/Metrics";
 import { EmptyState, LoadingOrError } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { pct, sgd, signedPct, signedSgd, toneColor } from "../format";
+import { baseCurrency, benchmarkName, money, pct, signedMoney, signedPct, toneColor } from "../format";
 import { usePeriod } from "../hooks";
 import { usePalette } from "../theme";
 
@@ -20,18 +20,18 @@ function spanReturn(c0: number | null, c1: number | null): number | null {
 /** NAV change split into deposits and market; flows on the first day are
  *  already inside the starting NAV. */
 function bridge(rows: PerformancePoint[], s: number, e: number) {
-  const start = rows[s].nav_sgd ?? 0;
-  const end = rows[e].nav_sgd ?? 0;
-  const deposits = sum(rows.slice(s + 1, e + 1).map((r) => r.external_flow_sgd));
+  const start = rows[s].nav_base ?? 0;
+  const end = rows[e].nav_base ?? 0;
+  const deposits = sum(rows.slice(s + 1, e + 1).map((r) => r.external_flow_base));
   return { start, end, deposits, market: end - start - deposits };
 }
 
 function describeNav(rows: PerformancePoint[], s: number, e: number): ReadoutItem[] {
   const b = bridge(rows, s, e);
   return [
-    { label: "Change", value: signedSgd(b.end - b.start), color: toneColor(b.end - b.start) },
-    { label: "Deposits", value: signedSgd(b.deposits) },
-    { label: "Market", value: signedSgd(b.market), color: toneColor(b.market) },
+    { label: "Change", value: signedMoney(b.end - b.start), color: toneColor(b.end - b.start) },
+    { label: "Deposits", value: signedMoney(b.deposits) },
+    { label: "Market", value: signedMoney(b.market), color: toneColor(b.market) },
   ];
 }
 
@@ -40,7 +40,7 @@ function describeReturns(rows: PerformancePoint[], s: number, e: number): Readou
   const bench = spanReturn(rows[s].benchmark_cum, rows[e].benchmark_cum);
   return [
     { label: "Portfolio", value: signedPct(port), color: toneColor(port) },
-    { label: "VWRA", value: signedPct(bench), color: toneColor(bench) },
+    { label: benchmarkName(), value: signedPct(bench), color: toneColor(bench) },
     ...(port !== null && bench !== null
       ? [{ label: "Difference", value: signedPct(port - bench), color: toneColor(port - bench) }]
       : []),
@@ -61,11 +61,11 @@ function describeDrawdown(rows: PerformancePoint[], s: number, e: number): Reado
 function NavBridge({ rows }: { rows: PerformancePoint[] }) {
   const b = bridge(rows, 0, rows.length - 1);
   const parts = [
-    { label: "Start", value: sgd(b.start), size: Math.max(b.start, 0), color: "text.disabled" },
-    { label: "Deposits", value: signedSgd(b.deposits), size: Math.abs(b.deposits), color: "primary.main" },
+    { label: "Start", value: money(b.start), size: Math.max(b.start, 0), color: "text.disabled" },
+    { label: "Deposits", value: signedMoney(b.deposits), size: Math.abs(b.deposits), color: "primary.main" },
     {
       label: b.market >= 0 ? "Market gain" : "Market loss",
-      value: signedSgd(b.market),
+      value: signedMoney(b.market),
       size: Math.abs(b.market),
       color: b.market >= 0 ? "success.main" : "error.main",
     },
@@ -107,7 +107,7 @@ export function Overview() {
   const w = perf.data;
   const rows = w?.series ?? [];
   const last = rows[rows.length - 1];
-  const latestCash = [...(pnl.data ?? [])].reverse().find((d) => d.cash_sgd !== null);
+  const latestCash = [...(pnl.data ?? [])].reverse().find((d) => d.cash_base !== null);
   const pos = positions.data ?? [];
   const unrealized = sum(pos.map((r) => r.unrealized_pnl));
   const costBasis = sum(pos.map((r) => r.cost_basis_money));
@@ -122,7 +122,7 @@ export function Overview() {
             Net asset value{last ? `, ${last.report_date}` : ""}
           </Typography>
           <Typography component="h1" sx={{ fontSize: { xs: "2.25rem", md: "3rem" }, fontWeight: 500, lineHeight: 1.1 }}>
-            {sgd(last?.nav_sgd)}
+            {money(last?.nav_base)}
           </Typography>
         </Box>
         <PeriodPicker />
@@ -153,53 +153,53 @@ export function Overview() {
                   note: w.portfolio.annualized === null ? "Needs a year of data" : undefined,
                 },
                 {
-                  label: "Versus VWRA in SGD",
+                  label: `Versus ${benchmarkName()} in ${baseCurrency()}`,
                   value: signedPct(w.relative?.excess),
                   color: toneColor(w.relative?.excess),
-                  note: w.benchmark ? `VWRA ${signedPct(w.benchmark.total_return)}` : "No benchmark prices",
+                  note: w.benchmark ? `${benchmarkName()} ${signedPct(w.benchmark.total_return)}` : "No benchmark prices",
                 },
                 {
                   label: "Cash",
-                  value: sgd(latestCash?.cash_sgd),
+                  value: money(latestCash?.cash_base),
                   note:
-                    latestCash?.cash_sgd != null && latestCash.nav_sgd
-                      ? `${pct(latestCash.cash_sgd / latestCash.nav_sgd, 1)} of NAV`
+                    latestCash?.cash_base != null && latestCash.nav_base
+                      ? `${pct(latestCash.cash_base / latestCash.nav_base, 1)} of NAV`
                       : undefined,
                 },
                 {
                   label: "Unrealized P&L",
-                  value: signedSgd(unrealized),
+                  value: signedMoney(unrealized),
                   color: toneColor(unrealized),
                   note: costBasis
-                    ? `${signedPct(unrealized / costBasis)} on cost; price ${signedSgd(
+                    ? `${signedPct(unrealized / costBasis)} on cost; price ${signedMoney(
                         sum(pos.map((r) => r.unrealized_capital_gains_pnl)),
-                      )}, FX ${signedSgd(sum(pos.map((r) => r.unrealized_fx_pnl)))}`
+                      )}, FX ${signedMoney(sum(pos.map((r) => r.unrealized_fx_pnl)))}`
                     : undefined,
                 },
-                { label: "Realized P&L in period", value: signedSgd(realized), color: toneColor(realized) },
+                { label: "Realized P&L in period", value: signedMoney(realized), color: toneColor(realized) },
               ]}
             />
           </Box>
 
           <MeasurableLine
-            title="Net asset value (SGD)"
+            title={`Net asset value (${baseCurrency()})`}
             height={260}
             palette={p}
             resetKey={period}
             labels={labels}
-            datasets={[lineDataset(p, 0, "NAV", rows.map((d) => d.nav_sgd))]}
-            options={lineOptions(p, { yFormat: (v) => sgd(v) })}
+            datasets={[lineDataset(p, 0, "NAV", rows.map((d) => d.nav_base))]}
+            options={lineOptions(p, { yFormat: (v) => money(v) })}
             describe={(s, e) => describeNav(rows, s, e)}
           />
           <MeasurableLine
-            title="Time-weighted return versus VWRA (SGD)"
+            title={`Time-weighted return versus ${benchmarkName()} (${baseCurrency()})`}
             height={260}
             palette={p}
             resetKey={period}
             labels={labels}
             datasets={[
               lineDataset(p, 0, "Portfolio", rows.map((d) => d.cum_twr)),
-              lineDataset(p, 1, "VWRA", rows.map((d) => d.benchmark_cum)),
+              lineDataset(p, 1, benchmarkName(), rows.map((d) => d.benchmark_cum)),
             ]}
             options={lineOptions(p, { yFormat: (v) => pct(v, 0) })}
             describe={(s, e) => describeReturns(rows, s, e)}

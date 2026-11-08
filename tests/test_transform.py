@@ -3,27 +3,28 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
-from portfolio.transform import RAW_TABLE_ORDER, transform_all
+from portfolio.transform import RAW_TABLE_ORDER, IncompleteSectionError, transform_all, transform_table
 
 INGESTED_AT = datetime(2026, 7, 17, tzinfo=timezone.utc)
 
 
 @pytest.fixture(scope="module")
-def rows(frames):
-    return transform_all(frames, ingested_at=INGESTED_AT, base_currency="SGD")
+def rows(frames, base_currency):
+    return transform_all(frames, ingested_at=INGESTED_AT, base_currency=base_currency)
 
 
 def test_all_raw_tables_present(rows):
     assert set(rows) == set(RAW_TABLE_ORDER)
 
 
-def test_nav_history_shape(rows, xml_rows):
+def test_nav_history_shape(rows, xml_rows, base_currency):
     last = max(rows["nav_history"], key=lambda r: r["report_date"])
     assert last["report_date"] == date(2026, 9, 30)
     assert last["total"] == Decimal(xml_rows("EquitySummaryByReportDateInBase")[-1]["total"])
-    assert last["base_currency"] == "SGD"
+    assert last["base_currency"] == base_currency
     assert last["ingested_at"] == INGESTED_AT
 
 
@@ -31,7 +32,7 @@ def test_positions_use_ib_base_value_and_string_enums(rows, xml_rows):
     src = xml_rows("OpenPosition")[-1]
     row = next(p for p in rows["positions"] if p["conid"] == src["conid"] and p["snapshot_date"].isoformat() == src["reportDate"])
     # IB's own positionValueInBase, not a float round-trip
-    assert row["position_value_sgd"] == Decimal(src["positionValueInBase"])
+    assert row["position_value_base"] == Decimal(src["positionValueInBase"])
     assert row["unrealized_capital_gains_pnl"] + row["unrealized_fx_pnl"] == pytest.approx(row["unrealized_pnl"], abs=1e-5)
     assert row["side"] == "Long" and isinstance(row["side"], str)  # enum coerced to its .value
     assert row["level_of_detail"] == "SUMMARY"
@@ -63,15 +64,10 @@ def test_cash_transactions_get_conid_from_isin(rows):
     assert divs and all(r["conid"] for r in divs)
 
 
-def test_underconfigured_cash_section_fails_with_the_fix(frames):
+def test_underconfigured_cash_section_fails_with_the_fix():
     # IB lets a section be enabled with its fields unticked; a real pull came
     # back with dateTime alone. Without type and amount, dividends can't be
     # told apart from deposits.
-    import pandas as pd
-    import pytest
-
-    from portfolio.transform import IncompleteSectionError, transform_table
-
     # ibflex fills every dataclass field, so unticked attributes arrive as
     # present-but-all-None columns, not absent ones.
     df = pd.DataFrame([{
@@ -83,18 +79,12 @@ def test_underconfigured_cash_section_fails_with_the_fix(frames):
         "transactionID": None,
     }])
     with pytest.raises(IncompleteSectionError) as exc:
-        transform_table("cash_transactions", df)
+        transform_table("cash_transactions", df, base_currency="SGD")
     assert "Cash Transactions" in str(exc.value)
     assert "type" in str(exc.value)
 
 
-def test_complete_cash_section_still_transforms(frames):
-    from decimal import Decimal
-
-    import pandas as pd
-
-    from portfolio.transform import transform_table
-
+def test_complete_cash_section_still_transforms():
     df = pd.DataFrame([{
         "transactionID": "t1",
         "type": "Deposits/Withdrawals",
@@ -103,19 +93,13 @@ def test_complete_cash_section_still_transforms(frames):
         "fxRateToBase": Decimal("1"),
         "dateTime": "2025-09-15;20:20:00",
     }])
-    out = transform_table("cash_transactions", df)
-    assert out["amount_sgd"].tolist() == [Decimal("1000")]
+    out = transform_table("cash_transactions", df, base_currency="SGD")
+    assert out["amount_base"].tolist() == [Decimal("1000")]
 
 
 def test_cash_conid_resolved_from_isin_when_absent():
     # Some Flex queries ship CashTransaction with isin but no conid; dividends
     # would then be unattributable without the SecuritiesInfo lookup.
-    from decimal import Decimal
-
-    import pandas as pd
-
-    from portfolio.transform import transform_table
-
     df = pd.DataFrame([
         {
             "transactionID": "d1",
@@ -139,6 +123,6 @@ def test_cash_conid_resolved_from_isin_when_absent():
         },
     ])
     securities = pd.DataFrame([{"conid": "208813720", "isin": "US02079K1079"}])
-    out = transform_table("cash_transactions", df, securities=securities)
+    out = transform_table("cash_transactions", df, base_currency="SGD", securities=securities)
     assert out["conid"].tolist()[0] == "208813720"
     assert pd.isna(out["conid"].tolist()[1])

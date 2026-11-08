@@ -6,7 +6,7 @@ import { lineDataset, lineOptions } from "../chartOptions";
 import { Metrics } from "../components/Metrics";
 import { EmptyState, LoadingOrError, Panel, ViewHeader } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { pct, signedPct, toneColor } from "../format";
+import { baseCurrency, pct, signedPct, toneColor } from "../format";
 import { usePeriod } from "../hooks";
 import { seriesColorMap, usePalette } from "../theme";
 
@@ -24,7 +24,7 @@ export function Fx() {
   const colors = seriesColorMap(currencies, p);
   const byKey = new Map(fxRows.map((r) => [`${r.report_date}|${r.currency}`, r.cum_contribution]));
   const cumulative = [
-    lineDataset(p, 0, "In SGD", rows.map((d) => d.cum_twr)),
+    lineDataset(p, 0, `In ${baseCurrency()}`, rows.map((d) => d.cum_twr)),
     lineDataset(p, 1, "In local currencies", rows.map((d) => d.cum_local)),
     lineDataset(p, 2, "Exchange-rate effect", rows.map((d) => d.cum_fx)),
   ];
@@ -38,7 +38,7 @@ export function Fx() {
     <div>
       <ViewHeader
         title="Currency effect"
-        note="Your SGD return, split into what holdings did in their own currencies and what exchange rates added or took away."
+        note={`Your ${baseCurrency()} return, split into what holdings did in their own currencies and what exchange rates added or took away.`}
       >
         <PeriodPicker />
       </ViewHeader>
@@ -53,13 +53,13 @@ export function Fx() {
             <Metrics
               min={200}
               items={[
-                { label: "Return in SGD", value: signedPct(last.cum_twr), color: toneColor(last.cum_twr) },
+                { label: `Return in ${baseCurrency()}`, value: signedPct(last.cum_twr), color: toneColor(last.cum_twr) },
                 { label: "Return in local currencies", value: signedPct(last.cum_local), color: toneColor(last.cum_local) },
                 {
                   label: "Exchange-rate effect",
                   value: signedPct(last.cum_fx),
                   color: toneColor(last.cum_fx),
-                  note: "Negative when SGD strengthened against what you hold",
+                  note: `Negative when ${baseCurrency()} strengthened against what you hold`,
                 },
               ]}
             />

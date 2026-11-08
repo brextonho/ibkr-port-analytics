@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -18,19 +18,36 @@ from sqlalchemy import Engine, delete, func, select
 from portfolio.analytics.marts import DERIVED_TABLES, compute_derived
 from portfolio.benchmark import fetch_benchmark_prices, with_close_in_base
 from portfolio.config import ConfigError, Settings
-from portfolio.flex.client import FlexAPIError, fetch_statement
+from portfolio.flex.client import FlexAPIError, FlexFatalError, fetch_statement
 from portfolio.flex.frames import to_frames
 from portfolio.flex.parse import parse_statements
 from portfolio.load.db import make_engine
 from portfolio.load.models import Base, NavHistory
-from portfolio.load.read import read_frames
+from portfolio.load.read import read_frames, stored_base_currency
 from portfolio.load.upsert import upsert_rows
 from portfolio.load.watermark import compute_window, current_watermark, record_run
-from portfolio.transform import RAW_TABLE_ORDER, frame_to_rows, transform_all
+from portfolio.transform import RAW_TABLE_ORDER, IncompleteSectionError, frame_to_rows, transform_all
 
 logger = logging.getLogger("portfolio.ingest")
 
 LIVE_XML_DIR = Path("data/xml")
+
+
+class BaseCurrencyChangedError(Exception):
+    """A statement's base currency differs from the one already in the database."""
+
+
+def statement_base_currency(stmts: Sequence[Any]) -> str:
+    """The account's base currency, from <AccountInformation currency="…">."""
+    if not all(s.AccountInformation and s.AccountInformation.currency for s in stmts):
+        raise IncompleteSectionError(
+            "the statement has no base currency. Fix in IBKR Client Portal: Performance & Reports → "
+            "Flex Queries → your query → Sections → Account Information, tick Currency, save, then rerun."
+        )
+    found = {s.AccountInformation.currency for s in stmts if s.AccountInformation}
+    if len(found) > 1:
+        raise ValueError(f"expected one base currency, got {sorted(found)}")
+    return found.pop()
 
 
 def load_raw(engine: Engine, xml: bytes, settings: Settings, ingested_at: datetime) -> tuple[date, date, dict[str, int]]:
@@ -39,8 +56,17 @@ def load_raw(engine: Engine, xml: bytes, settings: Settings, ingested_at: dateti
     account_id = stmts[0].accountId  # parse_statements guarantees one account
     if settings.account_id and account_id != settings.account_id:
         logger.warning("statement account %s != IBKR_ACCOUNT_ID %s", account_id, settings.account_id)
-    rows = transform_all(to_frames(stmts), ingested_at=ingested_at, base_currency=settings.base_currency)
+    base_currency = statement_base_currency(stmts)
+    rows = transform_all(to_frames(stmts), ingested_at=ingested_at, base_currency=base_currency)
     with engine.begin() as conn:
+        # every stored amount is in one currency; mixing two would add SGD to USD
+        stored = stored_base_currency(conn)
+        if stored and stored != base_currency:
+            raise BaseCurrencyChangedError(
+                f"this statement is in {base_currency} but the database holds {stored} statements. "
+                f"Load it into a new database (--db), or delete {settings.database} and reload every "
+                f"statement in {base_currency}."
+            )
         counts = {t: upsert_rows(conn, Base.metadata.tables[t], rows[t]) for t in RAW_TABLE_ORDER}
     return min(s.fromDate for s in stmts), max(s.toDate for s in stmts), counts
 
@@ -51,14 +77,15 @@ def refresh_benchmark(engine: Engine, settings: Settings) -> int:
         start, end = conn.execute(
             select(func.min(NavHistory.report_date), func.max(NavHistory.report_date))
         ).one()
-    if start is None:
+        base_currency = stored_base_currency(conn)
+    if start is None or base_currency is None:  # no NAV rows means no stored currency either
         return 0
     prices = fetch_benchmark_prices(settings.benchmark, start=start, end=end)
     if prices.empty:
         logger.warning("no benchmark prices returned for %s", settings.benchmark)
         return 0
     prices = with_close_in_base(
-        prices, read_frames(engine, ["fx_rates"])["fx_rates"], base_currency=settings.base_currency
+        prices, read_frames(engine, ["fx_rates"])["fx_rates"], base_currency=base_currency
     )
     with engine.begin() as conn:
         return upsert_rows(conn, Base.metadata.tables["benchmark_prices"], frame_to_rows(prices))
@@ -76,7 +103,7 @@ def benchmark_from_holding(engine: Engine, settings: Settings, symbol: str) -> i
     with engine.connect() as conn:
         rows = [
             dict(price_date=r.snapshot_date, ticker=settings.benchmark, close_local=r.mark_price,
-                 currency=r.currency, close_sgd=r.mark_price * r.fx_rate_to_base)
+                 currency=r.currency, close_base=r.mark_price * r.fx_rate_to_base)
             for r in conn.execute(stmt)
         ]
     with engine.begin() as conn:
@@ -84,9 +111,10 @@ def benchmark_from_holding(engine: Engine, settings: Settings, symbol: str) -> i
 
 
 def rebuild_derived(engine: Engine, settings: Settings) -> dict[str, int]:
-    derived = compute_derived(
-        read_frames(engine), base_currency=settings.base_currency, benchmark_ticker=settings.benchmark
-    )
+    with engine.connect() as conn:
+        base_currency = stored_base_currency(conn)
+    assert base_currency, "rebuild_derived runs after a load, so a base currency is stored"
+    derived = compute_derived(read_frames(engine), base_currency=base_currency, benchmark_ticker=settings.benchmark)
     with engine.begin() as conn:  # replace whole: no stale rows survive a correction
         for name in DERIVED_TABLES:
             table = Base.metadata.tables[name]
@@ -124,9 +152,19 @@ def run(
             requested_from, requested_to = compute_window(
                 watermark_before, today=date.today(), lookback_days=settings.lookback_days
             )
-            xml, flex_retries = fetch_statement(
-                settings.flex, from_date=requested_from, to_date=requested_to, retry=settings.retry
-            )
+            stop = max(watermark_before or requested_to, requested_from)
+            while True:
+                try:
+                    xml, flex_retries = fetch_statement(
+                        settings.flex, from_date=requested_from, to_date=requested_to, retry=settings.retry
+                    )
+                    break
+                except FlexFatalError as exc:
+                    # 1003: IB hasn't published td (weekend, holiday, late close); step back toward the watermark
+                    if exc.code != 1003 or requested_to <= stop:
+                        raise
+                    logger.warning("no statement through %s (1003); retrying one day earlier", requested_to)
+                    requested_to -= timedelta(days=1)
             LIVE_XML_DIR.mkdir(parents=True, exist_ok=True)
             saved = LIVE_XML_DIR / f"live_{requested_from:%Y%m%d}_{requested_to:%Y%m%d}.xml"
             saved.write_bytes(xml)  # for inspecting or re-ingesting a pull offline

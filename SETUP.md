@@ -33,6 +33,10 @@ names. Ticking extra fields is harmless; the ones listed are the minimum.
 
 ### Sections
 
+**Account Information**
+- [ ] Section ticked
+- [ ] Field: **Currency**. This is your base currency; every amount in the app is shown in it.
+
 **Net Asset Value (NAV) in Base**
 - [ ] Section ticked
 - [ ] Options: leave **Exclude prior report date** unticked, and tick **Exclude long/short breakout**
@@ -99,8 +103,8 @@ Open `.env` and fill in `FLEX_TOKEN`, `FLEX_QUERY_ID` and, optionally,
 `IBKR_ACCOUNT_ID` (the app then warns if a statement belongs to a different
 account). `.env` stays on your machine; git ignores it.
 
-Everything else has sensible defaults. To change the benchmark, base currency
-or database file, copy `config/config.example.yaml` to `config/config.yaml` and
+Everything else has sensible defaults. To change the benchmark or database
+file, copy `config/config.example.yaml` to `config/config.yaml` and
 edit the lines you need.
 
 ## 5. Load your history

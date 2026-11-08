@@ -85,7 +85,7 @@ class Position(Base):
     quantity: Mapped[Optional[Decimal]]
     mark_price: Mapped[Optional[Decimal]]
     position_value: Mapped[Optional[Decimal]]
-    position_value_sgd: Mapped[Optional[Decimal]]
+    position_value_base: Mapped[Optional[Decimal]]
     cost_basis_price: Mapped[Optional[Decimal]]
     cost_basis_money: Mapped[Optional[Decimal]]
     unrealized_pnl: Mapped[Optional[Decimal]]
@@ -177,7 +177,7 @@ class CashTransaction(Base):
     date_time: Mapped[Optional[datetime]]
     settle_date: Mapped[Optional[date]]
     amount: Mapped[Optional[Decimal]]
-    amount_sgd: Mapped[Optional[Decimal]]
+    amount_base: Mapped[Optional[Decimal]]
     type: Mapped[Optional[str]]
     code: Mapped[Optional[str]]
     description: Mapped[Optional[str]]
@@ -214,7 +214,7 @@ class ChangeInNav(Base):
 
 
 class FxRate(Base):
-    """Daily FX series from ConversionRates. rate_to_base = SGD per unit."""
+    """Daily FX series from ConversionRates. rate_to_base = base currency per unit."""
 
     __tablename__ = "fx_rates"
 
@@ -244,7 +244,7 @@ class BenchmarkPrice(Base):
     ticker: Mapped[str] = mapped_column(primary_key=True)
     close_local: Mapped[Optional[Decimal]]
     currency: Mapped[Optional[str]]
-    close_sgd: Mapped[Optional[Decimal]]
+    close_base: Mapped[Optional[Decimal]]
 
 
 # --------------------------------------------------------------------------
@@ -315,8 +315,8 @@ class DailyReturn(Base):
     __tablename__ = "daily_returns"
 
     report_date: Mapped[date] = mapped_column(primary_key=True)
-    nav_sgd: Mapped[Optional[Decimal]]
-    external_flow_sgd: Mapped[Optional[Decimal]]
+    nav_base: Mapped[Optional[Decimal]]
+    external_flow_base: Mapped[Optional[Decimal]]
     r_period: Mapped[Optional[Decimal]]
     r_local: Mapped[Optional[Decimal]]
     r_fx: Mapped[Optional[Decimal]]

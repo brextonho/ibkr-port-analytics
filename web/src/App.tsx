@@ -3,7 +3,9 @@ import LightModeOutlined from "@mui/icons-material/LightModeOutlined";
 import { Box, Container, IconButton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import { useApi } from "./api/client";
-import type { IngestRunRow } from "./api/types";
+import type { Account, IngestRunRow } from "./api/types";
+import { LoadingOrError } from "./components/Panel";
+import { setAccount } from "./format";
 import { useTab } from "./hooks";
 import { useResolvedMode } from "./theme";
 import { ClosedTrades } from "./views/ClosedTrades";
@@ -63,6 +65,8 @@ function LastRun({ onOpen }: { onOpen: () => void }) {
 export default function App() {
   const [tab, setTab] = useTab(KEYS);
   const View = VIEWS[tab].view;
+  const account = useApi<Account>("/account");
+  if (account.data) setAccount(account.data); // before the views format any amount
   return (
     <>
       <Box component="header" sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider" }}>
@@ -94,7 +98,7 @@ export default function App() {
         </Container>
       </Box>
       <Container component="main" maxWidth="xl" sx={{ py: 3 }}>
-        <View />
+        {account.data ? <View /> : <LoadingOrError loading={account.isLoading} error={account.error} />}
       </Container>
     </>
   );

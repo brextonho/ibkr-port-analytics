@@ -22,7 +22,7 @@ def test_currency_weights_exclude_base_and_divide_by_nav():
         {
             "snapshot_date": [date(2026, 1, 1)] * 3,
             "currency": ["USD", "SGD", "JPY"],
-            "position_value_sgd": [500.0, 300.0, 200.0],
+            "position_value_base": [500.0, 300.0, 200.0],
         }
     )
     nav_total = pd.Series([1000.0], index=pd.DatetimeIndex(["2026-01-01"]))
@@ -51,12 +51,12 @@ def test_attribution_is_prev_weight_times_fx_return():
 
 
 def test_log_additivity_is_exact():
-    """ln(1+r_sgd) = ln(1+r_local) + ln(1+r_fx) with no residual."""
-    r_sgd = pd.Series([np.nan, 0.011, -0.023], index=DATES)
+    """ln(1+r_base) = ln(1+r_local) + ln(1+r_fx) with no residual."""
+    r_base = pd.Series([np.nan, 0.011, -0.023], index=DATES)
     r_fx = pd.Series([0.0, -0.004, 0.007], index=DATES)
-    r_local = r_local_from(r_sgd, r_fx)
+    r_local = r_local_from(r_base, r_fx)
     for i in (1, 2):
-        assert np.log1p(r_sgd.iloc[i]) == pytest.approx(
+        assert np.log1p(r_base.iloc[i]) == pytest.approx(
             np.log1p(r_local.iloc[i]) + np.log1p(r_fx.iloc[i]), abs=1e-15
         )
 
@@ -65,7 +65,7 @@ def test_fx_rate_levels_pivot(raw_frames, xml_rows):
     levels = fx_rate_levels(raw_frames["fx_rates"])
     last = xml_rows("ConversionRate")[-1]
     assert levels.loc[pd.Timestamp(last["reportDate"]), last["fromCurrency"]] == pytest.approx(float(last["rate"]))
-    assert list(levels.columns) == ["EUR", "JPY", "USD"]  # one column per currency
+    assert list(levels.columns) == sorted({r["fromCurrency"] for r in xml_rows("ConversionRate")})  # one per currency
     assert len(levels) == 260
 
 

@@ -1,4 +1,7 @@
-"""Generate tests/fixtures/test_data.xml: one year of a fictional SGD account.
+"""Generate the demo fixtures: one year of a fictional account, once with an
+SGD base currency (tests/fixtures/test_data.xml) and once with USD
+(tests/fixtures/test_usd.xml). Same trades and market path; only the
+currency the books are kept in differs.
 
 Run: uv run python scripts/make_demo_xml.py
 
@@ -25,9 +28,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
-OUT = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "test_data.xml"
+FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
+OUT = {"SGD": FIXTURES / "test_data.xml", "USD": FIXTURES / "test_usd.xml"}  # base currency → file
 ACCOUNT = "DEMO0001"
-BASE = "SGD"
 FIRST, LAST = date(2025, 10, 1), date(2026, 9, 30)  # FIRST only anchors the opening NAV
 OPENING_CASH = 60_000.0
 SEED = 7  # picked for a typical year: +13% with an 11% drawdown
@@ -59,7 +62,8 @@ SECS = [
     Sec("7203", "900107", "JP3633400001", "JPY", "COMMON", "TSEJ", "JP", "TOYOTA MOTOR CORP", 2900.0, 0.06, 0.25, 0.45),
 ]
 BY_SYMBOL = {s.symbol: s for s in SECS}
-FX0 = {"USD": (1.29, 0.04), "EUR": (1.50, 0.06), "JPY": (0.0087, 0.09)}  # rate, annual vol
+# SGD per unit and annual vol; rates against any other base are crosses of these
+FX0 = {"USD": (1.29, 0.04), "EUR": (1.50, 0.06), "JPY": (0.0087, 0.09)}
 COMMISSION = {"USD": 1.0, "EUR": 3.0, "JPY": 100.0, "SGD": 2.5}
 
 
@@ -70,7 +74,7 @@ BUYS = {
     100: [("VWRA", 50), ("NVDA", 15)],
 }
 SELLS = {160: [("NVDA", 40)], 230: [("MSFT", 5)]}  # NVDA closes two lots, MSFT part of one
-FLOWS = {45: 10_000.0, 100: 15_000.0, 200: -8_000.0}  # SGD deposits (+) and withdrawals (−)
+FLOWS = {45: 10_000.0, 100: 15_000.0, 200: -8_000.0}  # base-currency deposits (+) and withdrawals (−)
 DIVIDENDS = {  # symbol, gross per share (local), withholding rate
     30: [("MSFT", 0.91, 0.30)],
     55: [("7203", 45.0, 0.15)],
@@ -94,7 +98,7 @@ class Lot:
 
 @dataclass
 class Book:
-    cash: dict[str, float] = field(default_factory=lambda: {BASE: OPENING_CASH, "USD": 0.0, "EUR": 0.0, "JPY": 0.0})
+    cash: dict[str, float]
     lots: dict[str, list[Lot]] = field(default_factory=lambda: {s.symbol: [] for s in SECS})
 
 
@@ -117,12 +121,13 @@ def el(tag: str, **attrs: object) -> str:
     return f"<{tag} " + " ".join(f"{k}={quoteattr(str(v))}" for k, v in attrs.items()) + " />"
 
 
-def simulate() -> str:
+def simulate(base: str = "SGD") -> str:
     rng = random.Random(SEED)
     days = business_days(FIRST, LAST)
     price = {s.symbol: s.price for s in SECS}
-    rate = {c: r for c, (r, _) in FX0.items()} | {BASE: 1.0}
-    book = Book()
+    sgd_per = {c: r for c, (r, _) in FX0.items()} | {"SGD": 1.0}
+    rate = {c: v / sgd_per[base] for c, v in sgd_per.items()}
+    book = Book(cash={base: OPENING_CASH} | {c: 0.0 for c in rate if c != base})
     ids = iter(range(5_000_001, 9_999_999))
 
     def mv_base() -> dict[str, float]:
@@ -152,7 +157,8 @@ def simulate() -> str:
             z = s.market * market + math.sqrt(1 - s.market**2) * rng.gauss(0, 1)
             price[s.symbol] *= math.exp((mu - sig * sig / 2) / 252 + sig / math.sqrt(252) * z)
         for c, (_, vol) in FX0.items():
-            rate[c] *= math.exp(vol / math.sqrt(252) * rng.gauss(0, 1))
+            sgd_per[c] *= math.exp(vol / math.sqrt(252) * rng.gauss(0, 1))
+        rate = {c: v / sgd_per[base] for c, v in sgd_per.items()}
         translation = sum(v * (rate[c] - prev_rate[c]) for c, v in book.cash.items())
 
         stamp = day.isoformat()
@@ -161,17 +167,17 @@ def simulate() -> str:
         flows = dividends = withholding = commissions = realized = 0.0
 
         def fx_trade(ccy: str, amount: float, t: str) -> None:
-            """Convert SGD ↔ ccy at today's rate (amount > 0 buys ccy)."""
+            """Convert base ↔ ccy at today's rate (amount > 0 buys ccy)."""
             book.cash[ccy] += amount
-            book.cash[BASE] -= amount * rate[ccy]
+            book.cash[base] -= amount * rate[ccy]
             trades.append(el(
-                "Trade", accountId=ACCOUNT, currency=BASE, fxRateToBase="1", assetCategory="CASH",
-                subCategory="", symbol=f"{ccy}.{BASE}", description=f"{ccy}.{BASE}", conid=f"9909{len(ccy)}{ccy}",
+                "Trade", accountId=ACCOUNT, currency=base, fxRateToBase="1", assetCategory="CASH",
+                subCategory="", symbol=f"{ccy}.{base}", description=f"{ccy}.{base}", conid=f"9909{len(ccy)}{ccy}",
                 isin="", listingExchange="", tradeID=str(next(ids)), multiplier="1", reportDate=stamp,
                 dateTime=f"{stamp};{t}", tradeDate=stamp, settleDateTarget=stamp, transactionType="ExchTrade",
                 exchange="IDEALFX", quantity=n(amount), tradePrice=n(rate[ccy], 8),
                 tradeMoney=n(amount * rate[ccy]), proceeds=n(-amount * rate[ccy]), taxes="0", ibCommission="0",
-                ibCommissionCurrency=BASE, netCash=n(-amount * rate[ccy]), closePrice="0", openCloseIndicator="",
+                ibCommissionCurrency=base, netCash=n(-amount * rate[ccy]), closePrice="0", openCloseIndicator="",
                 notes="", cost="0", fifoPnlRealized="0", mtmPnl="0", buySell="BUY" if amount > 0 else "SELL",
                 transactionID=str(next(ids)), orderTime=f"{stamp};{t}", openDateTime="",
                 levelOfDetail="EXECUTION", orderType="", isAPIOrder="N",
@@ -191,7 +197,7 @@ def simulate() -> str:
             trade_id, txn = str(next(ids)), str(next(ids))
             lot_rows: list[str] = []
             if qty > 0:
-                if s.currency != BASE:
+                if s.currency != base:
                     fx_trade(s.currency, qty * p + comm, t)
                 book.lots[sym].append(Lot(qty, p, x, when, txn))
                 cost, pnl = qty * p, 0.0
@@ -225,7 +231,7 @@ def simulate() -> str:
                 orderTime=when, openDateTime="", levelOfDetail="EXECUTION", orderType="LMT", isAPIOrder="N",
             ))
             trades.extend(lot_rows)  # IB lists a sale's closed lots right after it
-            if qty < 0 and s.currency != BASE:
+            if qty < 0 and s.currency != base:
                 fx_trade(s.currency, -book.cash[s.currency], t)  # bring proceeds home
 
         for sym, qty in BUYS.get(i, []):
@@ -235,10 +241,10 @@ def simulate() -> str:
 
         if i in FLOWS:
             amount = FLOWS[i]
-            book.cash[BASE] += amount
+            book.cash[base] += amount
             flows += amount
             cash_txns.append(el(
-                "CashTransaction", dateTime=f"{stamp};20:20:00", accountId=ACCOUNT, currency=BASE, fxRateToBase="1",
+                "CashTransaction", dateTime=f"{stamp};20:20:00", accountId=ACCOUNT, currency=base, fxRateToBase="1",
                 symbol="", isin="", listingExchange="", amount=n(amount), type="Deposits/Withdrawals",
                 transactionID=str(next(ids)),
             ))
@@ -291,23 +297,23 @@ def simulate() -> str:
         cash_rows = [el("CashReportCurrency", currency="BASE_SUMMARY", fromDate=stamp, toDate=stamp,
                         depositWithdrawals=n(flows), endingCash=n(cash_base()), endingSettledCash=n(cash_base()))]
         cash_rows += [el("CashReportCurrency", currency=c, fromDate=stamp, toDate=stamp,
-                         depositWithdrawals=n(flows if c == BASE else 0), endingCash=n(v), endingSettledCash=n(v))
+                         depositWithdrawals=n(flows if c == base else 0), endingCash=n(v), endingSettledCash=n(v))
                       for c, v in sorted(book.cash.items())]
 
         def equity(d: date, cash: float, stock: float) -> str:
-            return el("EquitySummaryByReportDateInBase", accountId=ACCOUNT, currency=BASE, reportDate=d.isoformat(),
+            return el("EquitySummaryByReportDateInBase", accountId=ACCOUNT, currency=base, reportDate=d.isoformat(),
                       cash=n(cash), stock=n(stock), options="0", bonds="0", funds="0", dividendAccruals="0",
                       interestAccruals="0", crypto="0", total=n(cash + stock))
 
         statements.append("\n".join([
             f'<FlexStatement accountId="{ACCOUNT}" fromDate="{stamp}" toDate="{stamp}" period="" '
             f'whenGenerated="{(day + timedelta(days=1)).isoformat()};06:00:00">',
-            f'<AccountInformation acctAlias="" currency="{BASE}" />',
+            f'<AccountInformation acctAlias="" currency="{base}" />',
             "<EquitySummaryInBase>",
             equity(prev_day, *prev_equity) if i > 1 else equity(prev_day, OPENING_CASH, 0.0),
             equity(day, cash_base(), stock_value),
             "</EquitySummaryInBase>",
-            el("ChangeInNAV", accountId=ACCOUNT, currency=BASE, fromDate=stamp, toDate=stamp,
+            el("ChangeInNAV", accountId=ACCOUNT, currency=base, fromDate=stamp, toDate=stamp,
                startingValue=n(prev_nav), realized=n(realized), changeInUnrealized=n(change_unreal),
                depositsWithdrawals=n(flows), dividends=n(dividends), withholdingTax=n(withholding), interest="0",
                otherFees="0", commissions=n(commissions), netFxTrading="0", fxTranslation=n(translation),
@@ -322,8 +328,8 @@ def simulate() -> str:
                  issuerCountryCode=s.country, multiplier="1", underlyingCategory="", code="") for s in SECS],
             "</SecuritiesInfo>",
             "<ConversionRates>",
-            *[el("ConversionRate", reportDate=stamp, fromCurrency=c, toCurrency=BASE, rate=n(rate[c], 8))
-              for c in sorted(FX0)],
+            *[el("ConversionRate", reportDate=stamp, fromCurrency=c, toCurrency=base, rate=n(rate[c], 8))
+              for c in sorted(rate) if c != base],
             "</ConversionRates>",
             "</FlexStatement>",
         ]))
@@ -341,5 +347,6 @@ def simulate() -> str:
 
 
 if __name__ == "__main__":
-    OUT.write_text(simulate())
-    print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.1f} MB)")
+    for base, out in OUT.items():
+        out.write_text(simulate(base))
+        print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB)")

@@ -10,19 +10,26 @@ from fastapi.staticfiles import StaticFiles
 from portfolio.api import schemas
 from portfolio.api.routes import income, ops, performance, positions, trades
 from portfolio.load.db import make_engine
+from portfolio.load.read import stored_base_currency
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
-def create_app(database_url: str, *, risk_free_rate: float = 0.0, base_currency: str = "SGD") -> FastAPI:
+def create_app(database_url: str, *, risk_free_rate: float = 0.0, benchmark: str = "VWRA.L") -> FastAPI:
     app = FastAPI(title="IBKR Portfolio Analytics", version="0.2.0")
     app.state.engine = make_engine(database_url)
     app.state.risk_free_rate = risk_free_rate
-    app.state.base_currency = base_currency
 
     @app.get("/api/health", response_model=schemas.Health)
     def health():
         return {"status": "ok"}
+
+    @app.get("/api/account", response_model=schemas.Account)
+    def account():
+        """What the dashboard labels amounts with: the base currency comes
+        from the loaded statements, the benchmark from the config."""
+        with app.state.engine.connect() as conn:
+            return {"base_currency": stored_base_currency(conn), "benchmark": benchmark}
 
     for module in (performance, positions, trades, income, ops):
         app.include_router(module.router, prefix="/api")

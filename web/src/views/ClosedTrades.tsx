@@ -6,7 +6,7 @@ import type { ClosedTrade } from "../api/types";
 import { Metrics } from "../components/Metrics";
 import { tableOptions, useRememberLayout, useSavedLayout } from "../components/tables";
 import { EmptyState, LoadingOrError, ViewHeader } from "../components/Panel";
-import { num, pctPoints, signedSgd, toneColor } from "../format";
+import { baseCurrency, num, pctPoints, signedMoney, toneColor } from "../format";
 
 const right = { align: "right" as const };
 
@@ -14,7 +14,7 @@ export function ClosedTrades() {
   const { data, error, isPending } = useApi<ClosedTrade[]>("/closed-trades");
   const save = useSave<{ note: string | null }>(["/closed-trades"]);
   const rows = data ?? [];
-  const realized = rows.reduce((t, r) => t + (r.realized_pnl_sgd ?? 0), 0);
+  const realized = rows.reduce((t, r) => t + (r.realized_pnl_base ?? 0), 0);
   const held = rows.filter((r) => r.days_held !== null);
   const avgDays = held.length ? held.reduce((t, r) => t + r.days_held!, 0) / held.length : null;
 
@@ -43,18 +43,18 @@ export function ClosedTrades() {
         size: 90,
       },
       {
-        accessorKey: "realized_pnl_sgd",
-        header: "Realized P&L (SGD)",
+        accessorKey: "realized_pnl_base",
+        header: `Realized P&L (${baseCurrency()})`,
         enableEditing: false,
         enableGrouping: false,
         aggregationFn: "sum",
         Cell: ({ cell }) => {
           const v = cell.getValue<number | null>();
-          return <Box sx={{ color: toneColor(v) }}>{signedSgd(v)}</Box>;
+          return <Box sx={{ color: toneColor(v) }}>{signedMoney(v)}</Box>;
         },
         AggregatedCell: ({ cell }) => {
           const v = cell.getValue<number>();
-          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedSgd(v)}</Box>;
+          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedMoney(v)}</Box>;
         },
         muiTableBodyCellProps: right,
         muiTableHeadCellProps: right,
@@ -119,7 +119,7 @@ export function ClosedTrades() {
         <Metrics
           items={[
             { label: "Trades closed", value: String(rows.length) },
-            { label: "Realized P&L", value: signedSgd(realized), color: toneColor(realized) },
+            { label: "Realized P&L", value: signedMoney(realized), color: toneColor(realized) },
             { label: "Average days held", value: num(avgDays, 0) },
           ]}
         />

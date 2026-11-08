@@ -7,6 +7,9 @@ from decimal import Decimal
 
 import pytest
 
+from portfolio.flex.frames import to_frames
+from portfolio.flex.parse import StatementNotReadyError, parse_statement, parse_statements
+
 
 def _first_statement_xml(fixture_xml_path) -> tuple[str, str]:
     """(whole file, its first <FlexStatement>…</FlexStatement> block)."""
@@ -54,8 +57,6 @@ def test_money_arrives_as_decimal_and_dates_as_dates(frames, xml_rows):
 
 
 def test_one_day_statement_parses_alone(tmp_path, fixture_xml_path):
-    from portfolio.flex.parse import parse_statement
-
     stmt = parse_statement(_one_statement_file(tmp_path, fixture_xml_path))
     assert stmt.toDate == date(2025, 10, 2)
 
@@ -63,8 +64,6 @@ def test_one_day_statement_parses_alone(tmp_path, fixture_xml_path):
 def test_not_ready_pnl_message_refuses_the_statement(tmp_path, fixture_xml_path):
     # IB zeroes every P&L field when its daily run hasn't finished and says
     # so only in a <Message>; ingesting it would overwrite good data with 0s.
-    from portfolio.flex.parse import StatementNotReadyError, parse_statements
-
     path = tmp_path / "not_ready.xml"
     path.write_text(
         fixture_xml_path.read_text().replace(
@@ -81,9 +80,6 @@ def test_not_ready_pnl_message_refuses_the_statement(tmp_path, fixture_xml_path)
 def test_closed_lots_split_out_and_tagged_with_closing_trade(tmp_path, fixture_xml_path):
     # IB leaves tradeID blank on <Lot> and lists lots right after the
     # execution that closed them.
-    from portfolio.flex.frames import to_frames
-    from portfolio.flex.parse import parse_statements
-
     common = 'accountId="DEMO0001" currency="USD" fxRateToBase="1.3" conid="900106" symbol="NVDA"'
     trades = (
         f'<Trade {common} tradeID="T1" tradeDate="2025-10-02" quantity="-10" '

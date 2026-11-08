@@ -8,8 +8,10 @@ import requests
 
 from portfolio.config import FlexSettings, RetrySettings
 from portfolio.flex.client import (
+    FlexAPIError,
     FlexFatalError,
     FlexRetryExhaustedError,
+    _default_http_get,
     fetch_statement,
 )
 
@@ -104,8 +106,6 @@ def _failing_get(exc):
     ],
 )
 def test_http_failures_never_carry_the_token(monkeypatch, make_error):
-    from portfolio.flex.client import FlexAPIError, _default_http_get
-
     monkeypatch.setattr(requests, "get", _failing_get(make_error()))
     with pytest.raises(FlexAPIError) as info:
         _default_http_get("https://flex.example/SendRequest", {"t": "tok-SECRET", "q": "123"}, {})

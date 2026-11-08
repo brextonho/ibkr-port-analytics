@@ -6,7 +6,7 @@ import type { DividendRow, Performance, SeriesStats } from "../api/types";
 import { Metrics } from "../components/Metrics";
 import { EmptyState, LoadingOrError, Panel, ViewHeader } from "../components/Panel";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { num, pct, sgd, signedPct, toneColor } from "../format";
+import { baseCurrency, benchmarkName, money, num, pct, signedPct, toneColor } from "../format";
 import { usePeriod } from "../hooks";
 import { Exposures } from "./Exposures";
 
@@ -60,8 +60,8 @@ function summarizeDividends(rows: DividendRow[]): DividendSummary[] {
   for (const row of rows) {
     const symbol = row.symbol ?? "Unattributed";
     const entry = bySymbol.get(symbol) ?? { symbol, gross: 0, tax: 0 };
-    if (row.type === "Withholding Tax") entry.tax += row.amount_sgd ?? 0;
-    else entry.gross += row.amount_sgd ?? 0;
+    if (row.type === "Withholding Tax") entry.tax += row.amount_base ?? 0;
+    else entry.gross += row.amount_base ?? 0;
     bySymbol.set(symbol, entry);
   }
   return [...bySymbol.values()].sort((a, b) => b.gross + b.tax - (a.gross + a.tax));
@@ -76,7 +76,7 @@ export function Statistics() {
   const divs = useMemo(() => summarizeDividends(dividends.data ?? []), [dividends.data]);
   const gross = divs.reduce((t, d) => t + d.gross, 0);
   const tax = divs.reduce((t, d) => t + d.tax, 0);
-  const navs = (w?.series ?? []).map((d) => d.nav_sgd).filter((v): v is number => v !== null);
+  const navs = (w?.series ?? []).map((d) => d.nav_base).filter((v): v is number => v !== null);
   const avgNav = navs.length ? navs.reduce((t, v) => t + v, 0) / navs.length : null;
   const calendarDays = w ? (Date.parse(w.end) - Date.parse(w.start)) / 86_400_000 : 0;
   // net dividends over average NAV, scaled to a year of calendar days
@@ -113,13 +113,13 @@ export function Statistics() {
       ) : (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 7 }}>
-            <Panel title="Portfolio and VWRA, both in SGD">
+            <Panel title={`Portfolio and ${benchmarkName()}, both in ${baseCurrency()}`}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell />
                     <TableCell align="right">Portfolio</TableCell>
-                    <TableCell align="right">VWRA</TableCell>
+                    <TableCell align="right">{benchmarkName()}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -142,7 +142,7 @@ export function Statistics() {
             </Panel>
           </Grid>
           <Grid size={{ xs: 12, md: 5 }}>
-            <Panel title="Relative to VWRA">
+            <Panel title={`Relative to ${benchmarkName()}`}>
               {relRows.length === 0 ? (
                 <EmptyState>No benchmark prices in this period.</EmptyState>
               ) : (
@@ -160,8 +160,8 @@ export function Statistics() {
                     </TableBody>
                   </Table>
                   <Typography variant="caption" color="text.secondary" component="p" mt={1}>
-                    From {r!.weeks} weekly returns. VWRA closes in London hours before most of your
-                    holdings close in New York, so daily figures would understate beta and correlation.
+                    From {r!.weeks} weekly returns. The benchmark and your holdings close at different times
+                    of day, so daily figures would understate beta and correlation.
                   </Typography>
                 </>
               )}
@@ -182,14 +182,14 @@ export function Statistics() {
           <Box mb={2}>
             <Metrics
               items={[
-                { label: "Gross dividends", value: sgd(gross, 2) },
-                { label: "Withholding tax", value: sgd(tax, 2), note: gross ? `${pct(-tax / gross, 1)} of gross` : undefined },
-                { label: "Net dividends", value: sgd(gross + tax, 2), color: "success.main" },
+                { label: "Gross dividends", value: money(gross, 2) },
+                { label: "Withholding tax", value: money(tax, 2), note: gross ? `${pct(-tax / gross, 1)} of gross` : undefined },
+                { label: "Net dividends", value: money(gross + tax, 2), color: "success.main" },
                 { label: "Net yield, annualized", value: pct(divYield), note: "Net dividends over average NAV" },
               ]}
             />
           </Box>
-          <Panel title="By security (SGD)">
+          <Panel title={`By security (${baseCurrency()})`}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -204,9 +204,9 @@ export function Statistics() {
                 {divs.map((d) => (
                   <TableRow key={d.symbol}>
                     <TableCell>{d.symbol}</TableCell>
-                    <TableCell align="right">{sgd(d.gross, 2)}</TableCell>
-                    <TableCell align="right">{sgd(d.tax, 2)}</TableCell>
-                    <TableCell align="right">{sgd(d.gross + d.tax, 2)}</TableCell>
+                    <TableCell align="right">{money(d.gross, 2)}</TableCell>
+                    <TableCell align="right">{money(d.tax, 2)}</TableCell>
+                    <TableCell align="right">{money(d.gross + d.tax, 2)}</TableCell>
                     <TableCell align="right">{d.gross ? pct(-d.tax / d.gross, 0) : "—"}</TableCell>
                   </TableRow>
                 ))}

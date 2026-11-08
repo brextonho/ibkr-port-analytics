@@ -17,8 +17,8 @@ def _count(conn, table) -> int:
     return conn.execute(select(func.count()).select_from(table)).scalar()
 
 
-def test_upsert_twice_is_idempotent_end_to_end(engine, frames, xml_rows):
-    rows = transform_all(frames, ingested_at=INGESTED_AT, base_currency="SGD")
+def test_upsert_twice_is_idempotent_end_to_end(engine, frames, xml_rows, base_currency):
+    rows = transform_all(frames, ingested_at=INGESTED_AT, base_currency=base_currency)
     for _ in range(2):
         with engine.begin() as conn:
             for name in RAW_TABLE_ORDER:
@@ -59,9 +59,6 @@ def test_empty_rows_are_a_noop(engine):
 def test_rows_repeated_across_day_segments_collapse_last_wins(engine):
     # A day-segmented pull repeats SecuritiesInfo once per statement; a single
     # INSERT ... ON CONFLICT may not touch the same row twice.
-    from portfolio.load.models import Base
-    from portfolio.load.upsert import upsert_rows
-
     table = Base.metadata.tables["securities"]
     rows = [
         {"conid": "1", "symbol": "AAA", "currency": "USD"},
@@ -78,8 +75,6 @@ def test_rows_repeated_across_day_segments_collapse_last_wins(engine):
 def test_large_batches_are_chunked_under_the_bind_param_ceiling(engine):
     # A 365-day day-segmented backfill writes thousands of position rows in
     # one call; a single INSERT would exceed the driver's parameter limit.
-    from portfolio.load.upsert import upsert_rows
-
     table = Base.metadata.tables["positions"]
     rows = [
         {
@@ -87,7 +82,7 @@ def test_large_batches_are_chunked_under_the_bind_param_ceiling(engine):
             "conid": str(i % 40),
             "quantity": Decimal("1"),
             "currency": "USD",
-            "position_value_sgd": Decimal("100"),
+            "position_value_base": Decimal("100"),
         }
         for i in range(8000)
     ]

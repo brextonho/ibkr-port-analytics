@@ -58,8 +58,8 @@ def test_performance_excludes_the_base_rows_return_and_ties_out():
     daily = pd.DataFrame(
         {
             "report_date": pd.date_range("2026-01-02", periods=4, freq="B"),
-            "nav_sgd": [100.0, 110.0, 104.5, 106.59],
-            "external_flow_sgd": 0.0,
+            "nav_base": [100.0, 110.0, 104.5, 106.59],
+            "external_flow_base": 0.0,
             "r_period": [0.50, 0.10, -0.05, 0.02],  # 0.50 belongs to before the period
             "r_fx": [0.0, 0.01, -0.02, 0.0],
             "benchmark_r": [None, 0.05, 0.0, 0.01],

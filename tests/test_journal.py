@@ -41,7 +41,7 @@ def test_one_row_per_closing_trade(journal):
 def test_winner_economics(journal):
     t1 = journal[journal["trade_id"] == "t1"].iloc[0]
     assert t1["quantity"] == pytest.approx(10.0)
-    assert t1["realized_pnl_sgd"] == pytest.approx(135.0)  # already SGD: no fx rate
+    assert t1["realized_pnl_base"] == pytest.approx(135.0)  # already SGD: no fx rate
     assert t1["return_pct"] == pytest.approx(13.5)  # 135 / 1000 cost
     assert t1["open_date"] == date(2026, 6, 10)  # earliest lot
     assert t1["days_held"] == 18  # (4×30 + 6×10) / 10, quantity-weighted

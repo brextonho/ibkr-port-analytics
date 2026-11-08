@@ -12,12 +12,13 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Connection, Engine, and_, case, func, select
 from sqlalchemy.dialects.sqlite import insert
 
 from portfolio.api import schemas
 from portfolio.api.deps import get_engine, table
+from portfolio.load.read import stored_base_currency
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ ASSET_CLASSES = ["cash", "stock", "options", "bonds", "funds", "crypto"]
 CASH_PREFIX = "CASH."  # cash rows are keyed CASH.<currency> wherever a conid goes
 
 
-def _rows(conn: Connection, base_currency: str) -> list[dict[str, Any]]:
+def _rows(conn: Connection) -> list[dict[str, Any]]:
     """Latest holdings ⋈ securities ⋈ annotations, then the cash rows."""
     p, s, a, n = table("positions"), table("securities"), table("annotations"), table("nav_history")
     latest = select(func.max(p.c.snapshot_date)).scalar_subquery()
@@ -51,8 +52,8 @@ def _rows(conn: Connection, base_currency: str) -> list[dict[str, Any]]:
             ).label("avg_cost_local"),
             p.c.fx_rate_to_base,
             p.c.cost_basis_money,
-            p.c.position_value_sgd,
-            (p.c.position_value_sgd / func.nullif(n.c.total, 0) * 100).label("percent_of_nav"),
+            p.c.position_value_base,
+            (p.c.position_value_base / func.nullif(n.c.total, 0) * 100).label("percent_of_nav"),
             p.c.unrealized_pnl,
             p.c.unrealized_capital_gains_pnl,
             p.c.unrealized_fx_pnl,
@@ -65,21 +66,21 @@ def _rows(conn: Connection, base_currency: str) -> list[dict[str, Any]]:
             .outerjoin(n, n.c.report_date == p.c.snapshot_date)
         )
         .where(p.c.snapshot_date == latest)
-        .order_by(p.c.position_value_sgd.desc())
+        .order_by(p.c.position_value_base.desc())
     )
     rows = [dict(r._mapping) for r in conn.execute(stmt)]
-    return rows + _cash_rows(conn, rows[0]["snapshot_date"], base_currency) if rows else rows
+    return rows + _cash_rows(conn, rows[0]["snapshot_date"]) if rows else rows
 
 
 def _annotation_columns(a):
     return (a.c.sleeve, a.c.theme, a.c.sector, a.c.geography, a.c.thesis, a.c.target_price, a.c.sellable_date)
 
 
-def _cash_rows(conn: Connection, day, base_currency: str) -> list[dict[str, Any]]:
+def _cash_rows(conn: Connection, day) -> list[dict[str, Any]]:
     """One row per currency held as cash on `day`, valued in base currency at
     that day's rate, so the Positions table adds up to the whole account."""
     c, f, n, a = table("cash_balances"), table("fx_rates"), table("nav_history"), table("annotations")
-    rate = func.coalesce(f.c.rate_to_base, case((c.c.currency == base_currency, 1.0)))
+    rate = func.coalesce(f.c.rate_to_base, case((c.c.currency == stored_base_currency(conn), 1.0)))
     stmt = (
         select(c.c.currency, c.c.ending_cash, (c.c.ending_cash * rate).label("value"), n.c.total, *_annotation_columns(a))
         .select_from(
@@ -104,7 +105,7 @@ def _cash_rows(conn: Connection, day, base_currency: str) -> list[dict[str, Any]
                 "currency": r.currency,
                 "quantity": r.ending_cash,
                 "fx_rate_to_base": r.value / r.ending_cash if r.value is not None else None,
-                "position_value_sgd": r.value,
+                "position_value_base": r.value,
                 "percent_of_nav": r.value / r.total * 100 if r.value is not None and r.total else None,
             }
         )
@@ -115,9 +116,9 @@ CASH_ROW = {k: None for k in schemas.PositionRow.model_fields} | {"asset_categor
 
 
 @router.get("/positions", response_model=list[schemas.PositionRow])
-def positions(request: Request, engine: Engine = Depends(get_engine)):
+def positions(engine: Engine = Depends(get_engine)):
     with engine.connect() as conn:
-        return _rows(conn, request.app.state.base_currency)
+        return _rows(conn)
 
 
 @router.put("/positions/{conid}", response_model=schemas.AnnotationRow)
@@ -147,7 +148,7 @@ def _bucket(row: dict[str, Any], by: Dimension) -> str:
 
 
 @router.get("/exposures", response_model=list[schemas.ExposureSlice])
-def exposures(request: Request, by: Dimension = "asset_class", engine: Engine = Depends(get_engine)):
+def exposures(by: Dimension = "asset_class", engine: Engine = Depends(get_engine)):
     """Latest snapshot split by one dimension, cash included. Unlabelled rows
     fall in 'Unassigned' (sleeve/theme/sector)."""
     with engine.connect() as conn:
@@ -162,22 +163,22 @@ def exposures(request: Request, by: Dimension = "asset_class", engine: Engine = 
                     "snapshot_date": row.report_date,
                     "dimension": by,
                     "bucket": b,
-                    "value_sgd": float(getattr(row, b)),
+                    "value_base": float(getattr(row, b)),
                     "pct_of_nav": float(getattr(row, b)) / total * 100,
                 }
                 for b in ASSET_CLASSES
                 if getattr(row, b)
             ]
-            return sorted(out, key=lambda x: -x["value_sgd"])
-        rows = _rows(conn, request.app.state.base_currency)
+            return sorted(out, key=lambda x: -x["value_base"])
+        rows = _rows(conn)
 
     value: dict[str, float] = defaultdict(float)
     share: dict[str, float] = defaultdict(float)
     for r in rows:
         key = _bucket(r, by)
-        value[key] += float(r["position_value_sgd"] or 0)
+        value[key] += float(r["position_value_base"] or 0)
         share[key] += float(r["percent_of_nav"] or 0)
     return [
-        {"snapshot_date": rows[0]["snapshot_date"], "dimension": by, "bucket": k, "value_sgd": v, "pct_of_nav": share[k]}
+        {"snapshot_date": rows[0]["snapshot_date"], "dimension": by, "bucket": k, "value_base": v, "pct_of_nav": share[k]}
         for k, v in sorted(value.items(), key=lambda kv: -kv[1])
     ]

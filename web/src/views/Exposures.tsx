@@ -6,7 +6,7 @@ import { Doughnut } from "react-chartjs-2";
 import { useApi } from "../api/client";
 import type { Dimension, ExposureSlice } from "../api/types";
 import { EmptyState, LoadingOrError, Panel } from "../components/Panel";
-import { pctPoints, sgd } from "../format";
+import { baseCurrency, money, pctPoints } from "../format";
 import { usePalette } from "../theme";
 
 const DIMENSIONS: { value: Dimension; label: string }[] = [
@@ -87,7 +87,7 @@ export function Exposures() {
                   labels: data.map((s) => s.bucket),
                   datasets: [
                     {
-                      data: data.map((s) => s.value_sgd ?? 0),
+                      data: data.map((s) => s.value_base ?? 0),
                       backgroundColor: data.map((_, i) => color(i)),
                       borderColor: p.surface, // 2px gap between slices
                       borderWidth: 2,
@@ -105,7 +105,7 @@ export function Exposures() {
                       callbacks: {
                         label: (ctx) => {
                           const s = data[ctx.dataIndex];
-                          return `${s.bucket}: ${sgd(s.value_sgd)} (${pctPoints(s.pct_of_nav, 1)})`;
+                          return `${s.bucket}: ${money(s.value_base)} (${pctPoints(s.pct_of_nav, 1)})`;
                         },
                       },
                     },
@@ -120,7 +120,7 @@ export function Exposures() {
                 <TableHead>
                   <TableRow>
                     <TableCell>{DIMENSIONS.find((d) => d.value === by)?.label}</TableCell>
-                    <TableCell align="right">Value (SGD)</TableCell>
+                    <TableCell align="right">Value ({baseCurrency()})</TableCell>
                     <TableCell align="right">Share of NAV</TableCell>
                   </TableRow>
                 </TableHead>
@@ -131,7 +131,7 @@ export function Exposures() {
                         <Box component="span" sx={{ display: "inline-block", width: 10, height: 10, borderRadius: "2px", bgcolor: color(i), mr: 1 }} />
                         {s.bucket}
                       </TableCell>
-                      <TableCell align="right">{sgd(s.value_sgd)}</TableCell>
+                      <TableCell align="right">{money(s.value_base)}</TableCell>
                       <TableCell align="right">{pctPoints(s.pct_of_nav, 1)}</TableCell>
                     </TableRow>
                   ))}

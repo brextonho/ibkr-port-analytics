@@ -10,10 +10,15 @@ class Health(BaseModel):
     status: str
 
 
+class Account(BaseModel):
+    base_currency: str | None  # None until a statement is loaded
+    benchmark: str  # Yahoo Finance ticker
+
+
 class PerformancePoint(BaseModel):
     report_date: date
-    nav_sgd: float | None
-    external_flow_sgd: float | None
+    nav_base: float | None
+    external_flow_base: float | None
     cum_twr: float | None  # all cumulative series start at 0 on the period's first date
     benchmark_cum: float | None
     drawdown: float | None
@@ -72,7 +77,7 @@ class ExposureSlice(BaseModel):
     snapshot_date: date
     dimension: str
     bucket: str
-    value_sgd: float | None
+    value_base: float | None
     pct_of_nav: float | None  # percent units, like IB's percentOfNAV
 
 
@@ -89,7 +94,7 @@ class PositionRow(BaseModel):
     avg_cost_local: float | None  # position currency, comparable to mark_price
     fx_rate_to_base: float | None
     cost_basis_money: float | None  # base currency
-    position_value_sgd: float | None
+    position_value_base: float | None
     percent_of_nav: float | None
     unrealized_pnl: float | None  # base currency
     unrealized_capital_gains_pnl: float | None  # price part of unrealized_pnl
@@ -136,7 +141,7 @@ class ClosedTrade(BaseModel):
     close_date: date | None
     days_held: int | None  # quantity-weighted across lots
     quantity: float | None
-    realized_pnl_sgd: float | None
+    realized_pnl_base: float | None
     return_pct: float | None
     note: str | None
 
@@ -149,8 +154,8 @@ class PnlPoint(BaseModel):
     """One day of IB's Change in NAV breakdown (base currency) plus cash."""
 
     report_date: date
-    nav_sgd: float | None
-    cash_sgd: float | None
+    nav_base: float | None
+    cash_base: float | None
     realized: float | None
     change_in_unrealized: float | None
     dividends: float | None
@@ -168,7 +173,7 @@ class DividendRow(BaseModel):
     type: str | None
     currency: str | None
     amount: float | None
-    amount_sgd: float | None
+    amount_base: float | None
 
 
 class IngestRunRow(BaseModel):

@@ -3,10 +3,15 @@
 export type Period = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "5y" | "all";
 export type Dimension = "asset_class" | "currency" | "geography" | "sleeve" | "theme" | "sector";
 
+export interface Account {
+  base_currency: string | null; // null until a statement is loaded
+  benchmark: string; // Yahoo Finance ticker
+}
+
 export interface PerformancePoint {
   report_date: string;
-  nav_sgd: number | null;
-  external_flow_sgd: number | null;
+  nav_base: number | null;
+  external_flow_base: number | null;
   // cumulative series start at 0 on the period's first date
   cum_twr: number | null;
   benchmark_cum: number | null;
@@ -66,7 +71,7 @@ export interface ExposureSlice {
   snapshot_date: string;
   dimension: Dimension;
   bucket: string;
-  value_sgd: number | null;
+  value_base: number | null;
   pct_of_nav: number | null; // percent units
 }
 
@@ -82,10 +87,10 @@ export interface PositionRow {
   mark_price: number | null; // position currency
   avg_cost_local: number | null; // position currency, comparable to mark_price
   fx_rate_to_base: number | null;
-  cost_basis_money: number | null; // SGD
-  position_value_sgd: number | null;
+  cost_basis_money: number | null; // base currency
+  position_value_base: number | null;
   percent_of_nav: number | null;
-  unrealized_pnl: number | null; // SGD
+  unrealized_pnl: number | null; // base currency
   unrealized_capital_gains_pnl: number | null; // price part of unrealized_pnl
   unrealized_fx_pnl: number | null; // FX part
   issuer_country_code: string | null;
@@ -106,15 +111,15 @@ export interface ClosedTrade {
   close_date: string | null;
   days_held: number | null;
   quantity: number | null;
-  realized_pnl_sgd: number | null;
+  realized_pnl_base: number | null;
   return_pct: number | null; // percent units
   note: string | null;
 }
 
 export interface PnlPoint {
   report_date: string;
-  nav_sgd: number | null;
-  cash_sgd: number | null;
+  nav_base: number | null;
+  cash_base: number | null;
   realized: number | null;
   change_in_unrealized: number | null;
   dividends: number | null;
@@ -132,7 +137,7 @@ export interface DividendRow {
   type: string | null;
   currency: string | null;
   amount: number | null;
-  amount_sgd: number | null;
+  amount_base: number | null;
 }
 
 export interface IngestRunRow {

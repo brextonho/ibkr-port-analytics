@@ -1,7 +1,7 @@
 """Derived tables, rebuilt whole from the raw tables on every ingest.
 
 Only what needs the full history goes here: the daily return spine (IB's
-TWR, its local/FX split, the SGD benchmark return) and per-currency FX
+TWR, its local/FX split, the benchmark return in base currency) and per-currency FX
 attribution. Everything per-period is computed on request from these.
 """
 from __future__ import annotations
@@ -50,16 +50,16 @@ def _rows(df: pd.DataFrame) -> list[dict[str, Any]]:
 def benchmark_returns(
     benchmark_prices: pd.DataFrame | None, ticker: str, nav_index: pd.DatetimeIndex
 ) -> pd.Series:
-    """Daily SGD return of the benchmark on NAV dates (last close carried over
+    """Daily base-currency return of the benchmark on NAV dates (last close carried over
     exchange holidays). NaN where there's no price yet."""
     empty = pd.Series(np.nan, index=nav_index)
     if benchmark_prices is None or benchmark_prices.empty:
         return empty
-    bench = benchmark_prices[benchmark_prices["ticker"] == ticker].dropna(subset=["close_sgd"])
+    bench = benchmark_prices[benchmark_prices["ticker"] == ticker].dropna(subset=["close_base"])
     if bench.empty:
         return empty
     close = pd.Series(
-        bench["close_sgd"].astype(float).to_numpy(),
+        bench["close_base"].astype(float).to_numpy(),
         index=pd.to_datetime(bench["price_date"]),
     ).sort_index()
     return close.reindex(nav_index, method="ffill").pct_change()
@@ -86,8 +86,8 @@ def compute_derived(
     daily = pd.DataFrame(
         {
             "report_date": nav_index,
-            "nav_sgd": nav_total.to_numpy(),
-            "external_flow_sgd": ib_daily_flows(raw["change_in_nav"], nav_index).to_numpy(),
+            "nav_base": nav_total.to_numpy(),
+            "external_flow_base": ib_daily_flows(raw["change_in_nav"], nav_index).to_numpy(),
             "r_period": r_period.to_numpy(),
             "r_local": r_local_from(r_period, r_fx).to_numpy(),
             "r_fx": r_fx.where(~r_period.isna()).to_numpy(),

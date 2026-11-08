@@ -1,6 +1,6 @@
 """Benchmark prices via yfinance, converted to base currency.
 
-VWRA is USD-denominated; comparing an SGD-based TWR against its USD return
+VWRA is USD-denominated; comparing, say, an SGD-based TWR against its USD return
 would read the FX move as alpha. Conversion uses the same fx_rates series as
 the portfolio so both sides carry identical currency exposure.
 """
@@ -37,10 +37,10 @@ def fetch_benchmark_prices(ticker: str, *, start: date, end: date) -> pd.DataFra
 def with_close_in_base(
     prices: pd.DataFrame, fx_rates: pd.DataFrame, *, base_currency: str
 ) -> pd.DataFrame:
-    """Add close_sgd using the last fx rate on or before each price date."""
+    """Add close_base using the last fx rate on or before each price date."""
     if prices.empty:
         out = prices.copy()
-        out["close_sgd"] = None
+        out["close_base"] = None
         return out
     out = prices.copy()
     out["_ts"] = pd.to_datetime(out["price_date"])
@@ -48,17 +48,17 @@ def with_close_in_base(
 
     currency = out["currency"].iloc[0]
     if currency == base_currency:
-        out["close_sgd"] = out["close_local"]
+        out["close_base"] = out["close_local"]
         return out.drop(columns="_ts")
 
     rates = fx_rates[fx_rates["currency"] == currency].copy() if not fx_rates.empty else fx_rates
     if rates is None or rates.empty:
-        out["close_sgd"] = None  # no fx series yet; benchmark columns stay null
+        out["close_base"] = None  # no fx series yet; benchmark columns stay null
         return out.drop(columns="_ts")
     rates["_ts"] = pd.to_datetime(rates["rate_date"])
     rates["rate_to_base"] = rates["rate_to_base"].astype(float)
     rates = rates.sort_values("_ts")[["_ts", "rate_to_base"]]
 
     merged = pd.merge_asof(out, rates, on="_ts", direction="backward")
-    merged["close_sgd"] = merged["close_local"].astype(float) * merged["rate_to_base"]
+    merged["close_base"] = merged["close_local"].astype(float) * merged["rate_to_base"]
     return merged.drop(columns=["_ts", "rate_to_base"])

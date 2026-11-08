@@ -11,7 +11,7 @@ import { useApi, useSave } from "../api/client";
 import type { PositionRow } from "../api/types";
 import { tableOptions, useRememberLayout, useSavedLayout } from "../components/tables";
 import { EmptyState, LoadingOrError, ViewHeader } from "../components/Panel";
-import { num, pctPoints, sgd, signedPct, signedSgd, toneColor } from "../format";
+import { baseCurrency, money, num, pctPoints, signedMoney, signedPct, toneColor } from "../format";
 
 // Edit this list to offer more sleeves; an empty choice clears the label.
 const SLEEVES = ["Core", "Satellite", "Cash"];
@@ -44,14 +44,14 @@ export function Positions() {
       { accessorKey: "symbol", header: "Symbol", enableEditing: false, size: 90 },
       { accessorKey: "description", header: "Name", enableEditing: false, enableGrouping: false, size: 180 },
       {
-        accessorKey: "position_value_sgd",
-        header: "Value (SGD)",
+        accessorKey: "position_value_base",
+        header: `Value (${baseCurrency()})`,
         enableEditing: false,
         enableGrouping: false,
         aggregationFn: "sum",
-        Cell: ({ cell }) => sgd(cell.getValue<number | null>()),
-        AggregatedCell: ({ cell }) => <strong>{sgd(cell.getValue<number>())}</strong>,
-        Footer: () => <strong>{sgd(sumOf(rows, "position_value_sgd"))}</strong>,
+        Cell: ({ cell }) => money(cell.getValue<number | null>()),
+        AggregatedCell: ({ cell }) => <strong>{money(cell.getValue<number>())}</strong>,
+        Footer: () => <strong>{money(sumOf(rows, "position_value_base"))}</strong>,
         muiTableBodyCellProps: right,
         muiTableHeadCellProps: right,
         muiTableFooterCellProps: right,
@@ -71,21 +71,21 @@ export function Positions() {
       },
       {
         accessorKey: "unrealized_pnl",
-        header: "Unrealized P&L (SGD)",
+        header: `Unrealized P&L (${baseCurrency()})`,
         enableEditing: false,
         enableGrouping: false,
         aggregationFn: "sum",
         Cell: ({ cell }) => {
           const v = cell.getValue<number | null>();
-          return <Box sx={{ color: toneColor(v) }}>{signedSgd(v)}</Box>;
+          return <Box sx={{ color: toneColor(v) }}>{signedMoney(v)}</Box>;
         },
         AggregatedCell: ({ cell }) => {
           const v = cell.getValue<number>();
-          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedSgd(v)}</Box>;
+          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedMoney(v)}</Box>;
         },
         Footer: () => {
           const v = sumOf(rows, "unrealized_pnl");
-          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedSgd(v)}</Box>;
+          return <Box sx={{ color: toneColor(v), fontWeight: 600 }}>{signedMoney(v)}</Box>;
         },
         muiTableBodyCellProps: right,
         muiTableHeadCellProps: right,
@@ -183,7 +183,7 @@ export function Positions() {
       density: "compact",
       showGlobalFilter: true,
       columnVisibility: { sector: false, target_price: false, thesis: false },
-      sorting: [{ id: "position_value_sgd", desc: true }],
+      sorting: [{ id: "position_value_base", desc: true }],
       ...saved,
     },
     muiTableContainerProps: { sx: { maxHeight: "calc(100vh - 260px)" } },

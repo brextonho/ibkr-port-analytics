@@ -1,6 +1,6 @@
 """FX decomposition and attribution.
 
-The return identity (1 + r_sgd) = (1 + r_local)(1 + r_fx) has a cross term in
+The return identity (1 + r_base) = (1 + r_local)(1 + r_fx) has a cross term in
 arithmetic space; in log space it is exactly additive, so the decomposition
 is done in logs and converted back for display — the numbers tie instead of
 almost-tying.
@@ -19,7 +19,7 @@ import pandas as pd
 def currency_weights(
     positions: pd.DataFrame, *, nav_total: pd.Series, base_currency: str
 ) -> pd.DataFrame:
-    """Non-base currency weights per snapshot: Σ position_value_sgd / NAV.
+    """Non-base currency weights per snapshot: Σ position_value_base / NAV.
 
     Index: snapshot dates (Timestamps); columns: currencies. Base-currency
     holdings have X ≡ 1 and drop out of the attribution.
@@ -30,11 +30,11 @@ def currency_weights(
     if pos.empty:
         return pd.DataFrame()
     pos["snapshot_date"] = pd.to_datetime(pos["snapshot_date"])
-    pos["position_value_sgd"] = pos["position_value_sgd"].astype(float)
+    pos["position_value_base"] = pos["position_value_base"].astype(float)
     values = pos.pivot_table(
         index="snapshot_date",
         columns="currency",
-        values="position_value_sgd",
+        values="position_value_base",
         aggfunc="sum",
         fill_value=0.0,
     )
@@ -94,13 +94,13 @@ def daily_fx_attribution(
     return r_fx, long.dropna(subset=["weight", "fx_return"]).reset_index(drop=True)
 
 
-def r_local_from(r_sgd: pd.Series, r_fx: pd.Series) -> pd.Series:
+def r_local_from(r_base: pd.Series, r_fx: pd.Series) -> pd.Series:
     """Local-currency component as the log-space residual.
 
-    ln(1 + r_sgd) = ln(1 + r_local) + ln(1 + r_fx), exactly — no cross-term
+    ln(1 + r_base) = ln(1 + r_local) + ln(1 + r_fx), exactly — no cross-term
     leakage.
     """
     return pd.Series(
-        np.expm1(np.log1p(r_sgd.astype(float)) - np.log1p(r_fx.reindex(r_sgd.index).fillna(0.0))),
-        index=r_sgd.index,
+        np.expm1(np.log1p(r_base.astype(float)) - np.log1p(r_fx.reindex(r_base.index).fillna(0.0))),
+        index=r_base.index,
     )

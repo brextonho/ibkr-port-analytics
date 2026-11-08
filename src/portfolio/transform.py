@@ -48,7 +48,6 @@ MAPPINGS: dict[str, dict[str, str]] = {
     "nav_history": {
         "reportDate": "report_date",
         "accountId": "account_id",
-        "currency": "base_currency",
         "cash": "cash",
         "stock": "stock",
         "options": "options",
@@ -68,7 +67,7 @@ MAPPINGS: dict[str, dict[str, str]] = {
         "position": "quantity",
         "markPrice": "mark_price",
         "positionValue": "position_value",
-        "positionValueInBase": "position_value_sgd",
+        "positionValueInBase": "position_value_base",
         "costBasisPrice": "cost_basis_price",
         "costBasisMoney": "cost_basis_money",
         "fifoPnlUnrealized": "unrealized_pnl",
@@ -194,8 +193,8 @@ REQUIRED: dict[str, dict[str, str]] = {
     "cash_transactions": {
         "type": "telling dividends and withholding tax apart from deposits",
         "amount": "the amount itself",
-        "currency": "SGD conversion",
-        "fxRateToBase": "SGD conversion",
+        "currency": "conversion to base currency",
+        "fxRateToBase": "conversion to base currency",
         "transactionID": "the primary key — without it rows cannot be deduplicated",
     },
     # daily returns are IB's own TWR; the NAV chart's flow split is IB's deposits
@@ -297,7 +296,7 @@ def transform_table(
     table: str,
     df: pd.DataFrame,
     *,
-    base_currency: str = "SGD",
+    base_currency: str,
     securities: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One section frame → one raw table's columns (special cases inline)."""
@@ -310,7 +309,7 @@ def transform_table(
             + SECTION_NAMES[table],
         )
     if table == "fx_rates" and not df.empty and "toCurrency" in df.columns:
-        # IB quotes toCurrency = base, so rate is already SGD per unit; rows
+        # IB quotes toCurrency = base, so rate is already base per unit; rows
         # quoted against anything else are dropped rather than stored wrong
         foreign = df["toCurrency"] != base_currency
         if foreign.any():
@@ -328,10 +327,12 @@ def transform_table(
 
     if table == "securities":
         out = out.drop_duplicates(subset=["conid"], keep="last")
+    elif table == "nav_history":
+        out["base_currency"] = base_currency  # AccountInformation's, so ingest can compare statements
     elif table == "positions":
         # IB supplies positionValueInBase; derive only where absent
-        missing = out["position_value_sgd"].isna()
-        out.loc[missing, "position_value_sgd"] = (
+        missing = out["position_value_base"].isna()
+        out.loc[missing, "position_value_base"] = (
             out.loc[missing, "position_value"] * out.loc[missing, "fx_rate_to_base"]
         )
     elif table == "trades":
@@ -346,7 +347,7 @@ def transform_table(
         resolved = _conid_by_isin(df, securities if securities is not None else pd.DataFrame())
         if resolved is not None:
             out["conid"] = out["conid"].where(out["conid"].notna(), resolved)
-        out["amount_sgd"] = out["amount"] * out["fx_rate_to_base"]
+        out["amount_base"] = out["amount"] * out["fx_rate_to_base"]
     return out
 
 

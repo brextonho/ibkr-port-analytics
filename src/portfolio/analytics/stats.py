@@ -113,7 +113,7 @@ def performance(daily: pd.DataFrame, *, rf_annual: float = 0.0) -> dict[str, Any
     d = daily.copy()
     d["report_date"] = pd.to_datetime(d["report_date"])
     d = d.sort_values("report_date").set_index("report_date")
-    for col in ("nav_sgd", "external_flow_sgd", "r_period", "r_local", "r_fx", "benchmark_r"):
+    for col in ("nav_base", "external_flow_base", "r_period", "r_local", "r_fx", "benchmark_r"):
         d[col] = pd.to_numeric(d[col], errors="coerce").astype(float)
     period = d.iloc[1:]  # the first row is the base point
     port = period["r_period"].dropna()
@@ -127,8 +127,8 @@ def performance(daily: pd.DataFrame, *, rf_annual: float = 0.0) -> dict[str, Any
 
     series = pd.DataFrame(
         {
-            "nav_sgd": d["nav_sgd"],
-            "external_flow_sgd": d["external_flow_sgd"],
+            "nav_base": d["nav_base"],
+            "external_flow_base": d["external_flow_base"],
             "cum_twr": from_base(period["r_period"]),
             "benchmark_cum": from_base(period["benchmark_r"]) if not bench.empty else np.nan,
             "drawdown": pd.concat(

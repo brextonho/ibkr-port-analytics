@@ -19,8 +19,8 @@ def pnl(period: Period = "1y", engine: Engine = Depends(get_engine)):
     stmt = (
         select(
             c.c.to_date.label("report_date"),
-            c.c.ending_value.label("nav_sgd"),
-            n.c.cash.label("cash_sgd"),
+            c.c.ending_value.label("nav_base"),
+            n.c.cash.label("cash_base"),
             c.c.realized,
             c.c.change_in_unrealized,
             c.c.dividends,
@@ -53,7 +53,7 @@ def dividends(period: Period = "1y", engine: Engine = Depends(get_engine)):
             t.c.type,
             t.c.currency,
             t.c.amount,
-            t.c.amount_sgd,
+            t.c.amount_base,
         )
         .select_from(t.outerjoin(s, s.c.conid == t.c.conid))
         .where(t.c.type.in_(DIVIDEND_TYPES))

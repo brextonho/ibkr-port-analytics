@@ -2,7 +2,6 @@
 # optional; the values shown are the defaults. Secrets go in .env, not here.
 
 database: portfolio.db      # SQLite file (or any SQLAlchemy URL)
-base_currency: SGD
 benchmark: VWRA.L           # Yahoo Finance ticker; converted to base currency
 risk_free_rate: 0.0         # annual, for Sharpe and Sortino
 lookback_days: 14           # days re-fetched before the last pull; heals missed runs

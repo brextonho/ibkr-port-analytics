@@ -49,6 +49,7 @@ The Ops tab shows the error. Common ones:
 | `1019`, `FlexRetryExhaustedError` | IBKR was busy and the statement never became ready | Try again later |
 | `StatementNotReadyError` | IBKR hadn't finished its P&L run | Pull later; scheduled pulls run in the evening for this reason |
 | `IncompleteSectionError` | A Flex section is missing required fields | The message names the fields; tick them in the query (SETUP.md, step 2) |
+| `BaseCurrencyChangedError` | The statement's base currency differs from the one already in the database | One database holds one base currency. Load it into a new one (`--db`), or rebuild (below) with every statement in the new currency |
 | `ConfigError` | `config/config.yaml` or `.env` has a problem | The message names the setting |
 
 The Overview's return figures come from IBKR's own daily return (the **TWR**
@@ -95,8 +96,8 @@ uv run portfolio ingest --xml data/xml/*.xml
 ## Development
 
 ```bash
-uv run pytest                              # Python tests, against the demo year
+uv run pytest                              # Python tests, against the demo data in SGD and USD
 npm --prefix web run dev                   # live-reloading dashboard on :5173 (keep `serve` running)
 npm --prefix web run build                 # rebuild what `serve` hands out
-uv run python scripts/make_demo_xml.py     # regenerate the demo year
+uv run python scripts/make_demo_xml.py     # regenerate the demo data
 ```

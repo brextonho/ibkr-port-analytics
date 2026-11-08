@@ -62,9 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from portfolio.api.app import create_app
 
-    app = create_app(
-        settings.database_url, risk_free_rate=settings.risk_free_rate, base_currency=settings.base_currency
-    )
+    app = create_app(settings.database_url, risk_free_rate=settings.risk_free_rate, benchmark=settings.benchmark)
     print(f"Dashboard: http://localhost:{args.port}  (API docs: /docs)")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
