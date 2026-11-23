@@ -52,7 +52,7 @@ export function MeasurableLine({
 
   const data = useMemo(() => ({ labels, datasets }), [labels, datasets]);
   const opts = useMemo(
-    () => ({ ...options, animation: false, events: [...RANGE_EVENTS] }) as ChartOptions<"line">,
+    () => ({ ...options, events: [...RANGE_EVENTS] }) as ChartOptions<"line">,
     [options],
   );
 

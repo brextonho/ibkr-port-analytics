@@ -76,3 +76,5 @@ Your data stays out of git: `.env`, `config/config.yaml`, `*.db` and
   currency is left out, so the exchange-rate effect is slightly understated.
 - There's no login: the dashboard listens on localhost only. Don't expose it
   to a network.
+
+This app is not affiliated with Interactive Brokers.
