@@ -20,6 +20,8 @@ Return figures are IB's own daily time-weighted returns, so deposits never show
 up as performance. Everything runs on your machine; nothing leaves it except
 the pulls from IBKR and benchmark prices from Yahoo Finance.
 
+https://github.com/user-attachments/assets/d09b6b39-f666-45a2-b955-ba6d0a57e85b
+
 ## Try it with demo data
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and
